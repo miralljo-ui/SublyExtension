@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/routes.tsx","./src/store.tsx","./src/vite-env.d.ts","./src/lib/googlecalendar.ts","./src/lib/storage.ts","./src/lib/types.ts","./src/views/calendar.tsx","./src/views/dashboard.tsx","./src/views/subscriptions.tsx","./vite.config.ts","./vite.extension.config.ts"],"version":"5.9.3"}
