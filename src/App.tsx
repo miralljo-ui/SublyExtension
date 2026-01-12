@@ -22,7 +22,7 @@ export default function App() {
           <nav className="flex items-center gap-2">
             <Tab to="/dashboard" label="Dashboard" />
             <Tab to="/subscriptions" label="Suscripciones" />
-            <Tab to="/calendar" label="Google Calendar" />
+            <Tab to="/settings" label="Ajustes" />
           </nav>
         </div>
       </header>

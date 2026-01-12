@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { MAJOR_CURRENCIES } from '../lib/types'
 import type { Period, Subscription } from '../lib/types'
 import { createId, nextRenewalDate } from '../lib/storage'
 import { buildGoogleCalendarEventEditUrl } from '../lib/googleCalendar'
@@ -11,13 +12,18 @@ const PERIODS: { value: Period; label: string }[] = [
   { value: 'annual', label: 'Anual' },
 ]
 
+function currencySymbol(code: string) {
+  const normalized = String(code ?? '').trim().toUpperCase()
+  return MAJOR_CURRENCIES.find(c => c.code === normalized)?.symbol ?? normalized
+}
+
 function parseMoney(v: string) {
   const n = Number(v)
   return Number.isFinite(n) ? n : 0
 }
 
 export function SubscriptionsView() {
-  const { state, setSubscriptions, setSettings } = useStore()
+  const { state, setSubscriptions } = useStore()
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const editing = useMemo(
@@ -44,7 +50,9 @@ export function SubscriptionsView() {
     setEditingId(s.id)
     setName(s.name)
     setPrice(String(s.price))
-    setCurrency(s.currency)
+    const normalized = String(s.currency ?? '').trim().toUpperCase()
+    const allowed = MAJOR_CURRENCIES.some(c => c.code === normalized)
+    setCurrency(allowed ? normalized : 'USD')
     setPeriod(s.period)
     setStartDate(s.startDate)
   }
@@ -57,7 +65,7 @@ export function SubscriptionsView() {
       id: editingId ?? createId(),
       name: trimmed,
       price: parseMoney(price),
-      currency: currency.trim().toUpperCase() || 'USD',
+      currency,
       period,
       startDate,
     }
@@ -79,7 +87,7 @@ export function SubscriptionsView() {
     const next = nextRenewalDate(s.startDate, s.period, new Date())
     const url = buildGoogleCalendarEventEditUrl({
       title: `${s.name} · Renovación`,
-      details: `Importe: ${s.price} ${s.currency}\nPeriodo: ${s.period}`,
+      details: `Importe: ${currencySymbol(s.currency)}${s.price}\nPeriodo: ${s.period}`,
       startDate: next,
       allDay: true,
       recurrence: { period: s.period },
@@ -87,55 +95,8 @@ export function SubscriptionsView() {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  function toggleNotifications(enabled: boolean) {
-    setSettings({
-      ...state.settings,
-      notificationsEnabled: enabled,
-    })
-  }
-
-  function setNotifyDaysBefore(raw: string) {
-    const n = Number(raw)
-    const next = Number.isFinite(n) ? Math.max(0, Math.min(30, Math.floor(n))) : 0
-    setSettings({
-      ...state.settings,
-      notifyDaysBefore: next,
-    })
-  }
-
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Alertas</div>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <label className="flex items-center gap-2 text-sm font-semibold">
-            <input
-              type="checkbox"
-              checked={state.settings.notificationsEnabled}
-              onChange={e => toggleNotifications(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Activar notificaciones
-          </label>
-
-          <label className="text-sm">
-            <div className="mb-1 font-semibold">Avisar (días antes)</div>
-            <input
-              type="number"
-              min={0}
-              max={30}
-              className="w-40 rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-              value={state.settings.notifyDaysBefore}
-              onChange={e => setNotifyDaysBefore(e.target.value)}
-              disabled={!state.settings.notificationsEnabled}
-            />
-          </label>
-        </div>
-        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          Las alertas se muestran como notificaciones del navegador. Si también quieres recordatorios en Google Calendar, usa “Añadir a Calendar” y configúralos al crear el evento.
-        </div>
-      </div>
-
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           {editing ? 'Editar suscripción' : 'Añadir suscripción'}
@@ -154,7 +115,17 @@ export function SubscriptionsView() {
 
           <label className="text-sm">
             <div className="mb-1 font-semibold">Moneda</div>
-            <input className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={currency} onChange={e => setCurrency(e.target.value)} />
+            <select
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+              value={currency}
+              onChange={e => setCurrency(e.target.value)}
+            >
+              {MAJOR_CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>
+                  {c.code} ({c.symbol}) — {c.names.es}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="text-sm">
@@ -195,7 +166,7 @@ export function SubscriptionsView() {
                 <div>
                   <div className="font-semibold">{s.name}</div>
                   <div className="text-xs text-slate-600 dark:text-slate-300">
-                    {s.price} {s.currency} · {s.period} · Inicio: {s.startDate} · Próximo: {nextRenewalDate(s.startDate, s.period, new Date()).toLocaleDateString()}
+                    {currencySymbol(s.currency)}{s.price} · {s.period} · Inicio: {s.startDate} · Próximo: {nextRenewalDate(s.startDate, s.period, new Date()).toLocaleDateString()}
                   </div>
                 </div>
                 <div className="flex gap-2">
