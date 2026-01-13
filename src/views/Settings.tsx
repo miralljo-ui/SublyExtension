@@ -1,4 +1,5 @@
 import { useStore } from '../store'
+import { MAJOR_CURRENCIES } from '../lib/types'
 
 export function Settings() {
   const { state, setSettings } = useStore()
@@ -16,6 +17,20 @@ export function Settings() {
     setSettings({
       ...state.settings,
       notifyDaysBefore: next,
+    })
+  }
+
+  function setCurrencyDisplayMode(mode: 'original' | 'convertToBase') {
+    setSettings({
+      ...state.settings,
+      currencyDisplayMode: mode,
+    })
+  }
+
+  function setBaseCurrency(code: string) {
+    setSettings({
+      ...state.settings,
+      baseCurrency: String(code || 'USD').trim().toUpperCase(),
     })
   }
 
@@ -51,6 +66,44 @@ export function Settings() {
         </div>
         <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Las alertas se muestran como notificaciones del navegador.
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Moneda</div>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="text-sm">
+            <div className="mb-1 font-semibold">Mostrar importes</div>
+            <select
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+              value={state.settings.currencyDisplayMode}
+              onChange={e => setCurrencyDisplayMode(e.target.value as 'original' | 'convertToBase')}
+            >
+              <option value="original">Con sus monedas originales</option>
+              <option value="convertToBase">Convertir a una moneda única</option>
+            </select>
+          </label>
+
+          <label className="text-sm">
+            <div className="mb-1 font-semibold">Moneda base</div>
+            <select
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950"
+              value={state.settings.baseCurrency}
+              onChange={e => setBaseCurrency(e.target.value)}
+              disabled={state.settings.currencyDisplayMode !== 'convertToBase'}
+            >
+              {MAJOR_CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>
+                  {c.code} ({c.symbol}) — {c.names.es}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          Si eliges “moneda única”, los totales y gráficos se convierten a la moneda base.
         </div>
       </div>
 

@@ -25,6 +25,7 @@ export const MAJOR_CURRENCIES: CurrencyOption[] = [
 export type Subscription = {
   id: string
   name: string
+  category?: string
   price: number
   currency: string
   period: Period
@@ -34,6 +35,8 @@ export type Subscription = {
 export type AppSettings = {
   notificationsEnabled: boolean
   notifyDaysBefore: number
+  currencyDisplayMode: 'original' | 'convertToBase'
+  baseCurrency: string
 }
 
 export type AppState = {
