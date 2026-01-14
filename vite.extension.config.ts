@@ -9,6 +9,7 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: {
+    chunkSizeWarningLimit: 650,
     outDir: 'dist-ext',
     emptyOutDir: true,
     rollupOptions: {

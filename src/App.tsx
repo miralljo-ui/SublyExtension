@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import FaultyTerminal from './components/FaultyTerminal'
+import { useI18n } from './lib/i18n'
 
 function Tab({ to, label }: { to: string; label: string }) {
   return (
@@ -15,6 +16,8 @@ function Tab({ to, label }: { to: string; label: string }) {
 }
 
 export default function App() {
+  const { t } = useI18n()
+
   return (
     <div className="relative min-h-screen text-slate-900 dark:text-white">
       <div className="pointer-events-none absolute inset-0 -z-10">
@@ -36,9 +39,9 @@ export default function App() {
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
             <div className="text-sm font-black tracking-wide">Subly</div>
             <nav className="flex items-center gap-2">
-              <Tab to="/dashboard" label="Dashboard" />
-              <Tab to="/subscriptions" label="Suscripciones" />
-              <Tab to="/settings" label="Ajustes" />
+              <Tab to="/dashboard" label={t('nav.dashboard') ?? 'Dashboard'} />
+              <Tab to="/subscriptions" label={t('nav.subscriptions') ?? 'Suscripciones'} />
+              <Tab to="/settings" label={t('nav.settings') ?? 'Ajustes'} />
             </nav>
           </div>
         </header>

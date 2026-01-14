@@ -4,14 +4,13 @@ import type { Period, Subscription } from '../lib/types'
 import { createId, nextRenewalDate } from '../lib/storage'
 import { buildGoogleCalendarEventEditUrl } from '../lib/googleCalendar'
 import { convertCurrencySync, formatCurrency } from '../lib/money'
+import { ImportExport } from '../components/ImportExport'
 import { useStore } from '../store'
+import { useI18n } from '../lib/i18n'
 
-const PERIODS: { value: Period; label: string }[] = [
-  { value: 'monthly', label: 'Mensual' },
-  { value: 'quarterly', label: 'Trimestral' },
-  { value: 'semiannual', label: 'Semestral' },
-  { value: 'annual', label: 'Anual' },
-]
+function localeForLanguage(language: 'es' | 'en') {
+  return language === 'es' ? 'es-ES' : 'en-US'
+}
 
 function parseMoney(v: string) {
   const n = Number(v)
@@ -24,6 +23,7 @@ function isValidYmd(ymd: string) {
 
 export function SubscriptionsView() {
   const { state, setSubscriptions } = useStore()
+  const { t, language } = useI18n()
   const displayMode = state.settings.currencyDisplayMode ?? 'original'
   const baseCurrency = (state.settings.baseCurrency || 'USD').toUpperCase()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -128,14 +128,29 @@ export function SubscriptionsView() {
     const shownCurrency = displayMode === 'convertToBase' ? baseCurrency : rawCur
     const shownAmount = displayMode === 'convertToBase' ? convertCurrencySync(s.price, rawCur, baseCurrency) : s.price
     const url = buildGoogleCalendarEventEditUrl({
-      title: `${s.name} · Renovación`,
-      details: `Importe: ${formatCurrency(shownAmount, shownCurrency)}\nPeriodo: ${s.period}`,
+      title: `${s.name} · ${t('subscriptions.renewal') ?? 'Renovación'}`,
+      details: `${t('subscriptions.detailsAmount') ?? 'Importe'}: ${formatCurrency(shownAmount, shownCurrency)}\n${t('subscriptions.detailsPeriod') ?? 'Periodo'}: ${s.period}`,
       startDate: next,
       allDay: true,
       recurrence: { period: s.period },
     })
     window.open(url, '_blank', 'noopener,noreferrer')
   }
+
+  const categories = useMemo(() => {
+    return language === 'es'
+      ? ['Streaming', 'Software', 'Música', 'Juegos', 'Productividad', 'Educación', 'Salud', 'Otros']
+      : ['Streaming', 'Software', 'Music', 'Games', 'Productivity', 'Education', 'Health', 'Other']
+  }, [language])
+
+  const PERIODS: { value: Period; label: string }[] = useMemo(() => (
+    [
+      { value: 'monthly', label: t('subscriptions.periodMonthly') ?? 'Mensual' },
+      { value: 'quarterly', label: t('subscriptions.periodQuarterly') ?? 'Trimestral' },
+      { value: 'semiannual', label: t('subscriptions.periodSemiannual') ?? 'Semestral' },
+      { value: 'annual', label: t('subscriptions.periodAnnual') ?? 'Anual' },
+    ]
+  ), [t])
 
   useEffect(() => {
     if (!isModalOpen) return
@@ -158,14 +173,17 @@ export function SubscriptionsView() {
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Listado</div>
-          <button type="button" className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500" onClick={openCreateModal}>
-            Añadir suscripción
-          </button>
+          <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('subscriptions.listTitle') ?? 'Listado'}</div>
+          <div className="flex items-center gap-2">
+            <ImportExport items={state.subscriptions} onImport={setSubscriptions} />
+            <button type="button" className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500" onClick={openCreateModal}>
+              {t('subscriptions.addSubscription') ?? 'Añadir suscripción'}
+            </button>
+          </div>
         </div>
         <div className="mt-3 space-y-2">
           {state.subscriptions.length === 0 ? (
-            <div className="text-sm text-slate-500">No hay suscripciones aún.</div>
+            <div className="text-sm text-slate-500">{t('subscriptions.noSubscriptions') ?? 'No hay suscripciones aún.'}</div>
           ) : (
             state.subscriptions.map(s => (
               <div key={s.id} className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3 dark:bg-slate-800/60 sm:flex-row sm:items-center sm:justify-between">
@@ -177,7 +195,7 @@ export function SubscriptionsView() {
                       const shownCurrency = displayMode === 'convertToBase' ? baseCurrency : rawCur
                       const shownAmount = displayMode === 'convertToBase' ? convertCurrencySync(s.price, rawCur, baseCurrency) : s.price
                       return formatCurrency(shownAmount, shownCurrency)
-                    })()} · {s.period}{s.category ? ` · ${s.category}` : ''} · Inicio: {s.startDate} · Próximo: {nextRenewalDate(s.startDate, s.period, new Date()).toLocaleDateString()}
+                    })()} · {s.period}{s.category ? ` · ${s.category}` : ''} · {t('subscriptions.startLabel') ?? 'Inicio'}: {s.startDate} · {t('subscriptions.nextLabel') ?? 'Próximo'}: {nextRenewalDate(s.startDate, s.period, new Date()).toLocaleDateString(localeForLanguage(language))}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -186,12 +204,12 @@ export function SubscriptionsView() {
                     className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500"
                     onClick={() => openCalendarDraft(s)}
                   >
-                    Añadir a Calendar
+                    {t('subscriptions.addToCalendar') ?? 'Añadir a Calendar'}
                   </button>
                   <button
                     type="button"
-                    aria-label="Editar"
-                    title="Editar"
+                    aria-label={t('common.edit') ?? 'Editar'}
+                    title={t('common.edit') ?? 'Editar'}
                     className="inline-flex items-center justify-center rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
                     onClick={() => loadForEdit(s)}
                   >
@@ -199,12 +217,12 @@ export function SubscriptionsView() {
                       <path d="M12 20h9" />
                       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
                     </svg>
-                    <span className="sr-only">Editar</span>
+                    <span className="sr-only">{t('common.edit') ?? 'Editar'}</span>
                   </button>
                   <button
                     type="button"
-                    aria-label="Eliminar"
-                    title="Eliminar"
+                    aria-label={t('common.delete') ?? 'Eliminar'}
+                    title={t('common.delete') ?? 'Eliminar'}
                     className="inline-flex items-center justify-center rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-500"
                     onClick={() => remove(s.id)}
                   >
@@ -215,7 +233,7 @@ export function SubscriptionsView() {
                       <path d="M10 11v6" />
                       <path d="M14 11v6" />
                     </svg>
-                    <span className="sr-only">Eliminar</span>
+                    <span className="sr-only">{t('common.delete') ?? 'Eliminar'}</span>
                   </button>
                 </div>
               </div>
@@ -230,12 +248,12 @@ export function SubscriptionsView() {
           <div className="relative mx-auto w-full max-w-3xl px-4 py-6">
             <div role="dialog" aria-modal="true" className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
               <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-                {editing ? 'Editar suscripción' : 'Añadir suscripción'}
+                {editing ? (t('subscriptions.editSubscription') ?? 'Editar suscripción') : (t('subscriptions.addSubscriptionTitle') ?? 'Añadir suscripción')}
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="text-sm">
-                  <div className="mb-1 font-semibold">Nombre</div>
+                  <div className="mb-1 font-semibold">{t('subscriptions.name') ?? 'Nombre'}</div>
                   <input
                     ref={nameInputRef}
                     className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
@@ -245,28 +263,23 @@ export function SubscriptionsView() {
                 </label>
 
                 <label className="text-sm">
-                  <div className="mb-1 font-semibold">Categoría</div>
+                  <div className="mb-1 font-semibold">{t('subscriptions.category') ?? 'Categoría'}</div>
                   <input
                     list="subly-categories"
                     className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
                     value={category}
                     onChange={e => setCategory(e.target.value)}
-                    placeholder="Ej: Streaming"
+                    placeholder={t('subscriptions.categoryPlaceholder') ?? 'Ej: Streaming'}
                   />
                   <datalist id="subly-categories">
-                    <option value="Streaming" />
-                    <option value="Software" />
-                    <option value="Música" />
-                    <option value="Juegos" />
-                    <option value="Productividad" />
-                    <option value="Educación" />
-                    <option value="Salud" />
-                    <option value="Otros" />
+                    {categories.map(c => (
+                      <option key={c} value={c} />
+                    ))}
                   </datalist>
                 </label>
 
                 <label className="text-sm">
-                  <div className="mb-1 font-semibold">Importe</div>
+                  <div className="mb-1 font-semibold">{t('subscriptions.amount') ?? 'Importe'}</div>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -279,7 +292,7 @@ export function SubscriptionsView() {
                 </label>
 
                 <label className="text-sm">
-                  <div className="mb-1 font-semibold">Moneda</div>
+                  <div className="mb-1 font-semibold">{t('subscriptions.currency') ?? 'Moneda'}</div>
                   <select
                     className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
                     value={currency}
@@ -287,14 +300,14 @@ export function SubscriptionsView() {
                   >
                     {MAJOR_CURRENCIES.map(c => (
                       <option key={c.code} value={c.code}>
-                        {c.code} ({c.symbol}) — {c.names.es}
+                        {c.code} ({c.symbol}) — {c.names[language]}
                       </option>
                     ))}
                   </select>
                 </label>
 
                 <label className="text-sm">
-                  <div className="mb-1 font-semibold">Periodo</div>
+                  <div className="mb-1 font-semibold">{t('subscriptions.period') ?? 'Periodo'}</div>
                   <select className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={period} onChange={e => setPeriod(e.target.value as Period)}>
                     {PERIODS.map(p => (
                       <option key={p.value} value={p.value}>
@@ -305,7 +318,7 @@ export function SubscriptionsView() {
                 </label>
 
                 <label className="text-sm">
-                  <div className="mb-1 font-semibold">Fecha inicio</div>
+                  <div className="mb-1 font-semibold">{t('subscriptions.startDate') ?? 'Fecha inicio'}</div>
                   <input type="date" className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </label>
               </div>
@@ -318,14 +331,14 @@ export function SubscriptionsView() {
                   className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={upsert}
                 >
-                  {editing ? 'Guardar' : 'Añadir'}
+                  {editing ? (t('common.save') ?? 'Guardar') : (t('common.add') ?? 'Añadir')}
                 </button>
                 <button type="button" className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" onClick={closeModal}>
-                  Cancelar
+                  {t('common.cancel') ?? 'Cancelar'}
                 </button>
                 {!canSubmit ? (
                   <div className="flex items-center text-sm text-slate-600 dark:text-slate-300">
-                    Completa nombre, importe y fecha.
+                    {t('subscriptions.helpIncomplete') ?? 'Completa nombre, importe y fecha.'}
                   </div>
                 ) : null}
               </div>

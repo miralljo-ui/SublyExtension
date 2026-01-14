@@ -5,6 +5,7 @@ import { SimpleBarChart, SimpleLineChart, SimplePieChart } from '../components/S
 import { exportElementToPng, exportRowsToCsv } from '../lib/export'
 import { convertCurrencySync, formatCurrency, getRates } from '../lib/money'
 import { useStore } from '../store'
+import { useI18n } from '../lib/i18n'
 
 function monthlyEquivalent(s: Subscription) {
   if (!Number.isFinite(s.price)) return 0
@@ -59,25 +60,38 @@ function occurrencesInRange(startDate: string, stepMonths: number, from: Date, t
 
 export function Dashboard() {
   const { state } = useStore()
+  const { t, language } = useI18n()
   const displayMode = state.settings.currencyDisplayMode ?? 'original'
   const baseCurrency = (state.settings.baseCurrency || 'USD').toUpperCase()
 
   const [fxTick, setFxTick] = useState(0)
+  const [fxStatus, setFxStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
 
   useEffect(() => {
     if (displayMode !== 'convertToBase') return
     let cancelled = false
 
+    setFxStatus('loading')
+
     void (async () => {
       const rates = await getRates(baseCurrency)
       if (cancelled) return
-      if (rates) setFxTick(t => t + 1)
+      if (rates) {
+        setFxStatus('ready')
+        setFxTick(t => t + 1)
+      } else {
+        setFxStatus('unavailable')
+      }
     })()
 
     return () => {
       cancelled = true
     }
   }, [baseCurrency, displayMode])
+
+  useEffect(() => {
+    if (displayMode !== 'convertToBase') setFxStatus('idle')
+  }, [displayMode])
 
   const chartElsRef = useRef(new Map<string, HTMLDivElement>())
   const setChartEl = (key: string) => (el: HTMLDivElement | null) => {
@@ -104,6 +118,82 @@ export function Dashboard() {
     return Array.from(byCurrency.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   }, [baseCurrency, displayMode, fxTick, state.subscriptions])
 
+  const insightsByCurrency = useMemo(() => {
+    const now = new Date()
+    const windowDays = Math.max(0, Math.min(30, Math.floor(state.settings.notifyDaysBefore ?? 7)))
+    const dueThreshold = new Date(now)
+    dueThreshold.setDate(dueThreshold.getDate() + windowDays)
+
+    const totalsByCurrency = new Map<string, number>()
+    const countsByCurrency = new Map<string, number>()
+    const dueSoonByCurrency = new Map<string, number>()
+    const highestByCurrency = new Map<string, { name: string; value: number }>()
+    const categoryTotalsByCurrency = new Map<string, Map<string, number>>()
+
+    for (const s of state.subscriptions) {
+      const rawCur = (s.currency || 'USD').toUpperCase()
+      const cur = displayMode === 'convertToBase' ? baseCurrency : rawCur
+      const monthlyEq = displayMode === 'convertToBase'
+        ? convertCurrencySync(monthlyEquivalent(s), rawCur, baseCurrency)
+        : monthlyEquivalent(s)
+
+      totalsByCurrency.set(cur, (totalsByCurrency.get(cur) ?? 0) + monthlyEq)
+      countsByCurrency.set(cur, (countsByCurrency.get(cur) ?? 0) + 1)
+
+      const next = nextRenewalDate(s.startDate, s.period, now)
+      if (next.getTime() <= dueThreshold.getTime()) {
+        dueSoonByCurrency.set(cur, (dueSoonByCurrency.get(cur) ?? 0) + 1)
+      }
+
+      const prevHigh = highestByCurrency.get(cur)
+      if (!prevHigh || monthlyEq > prevHigh.value) {
+        highestByCurrency.set(cur, { name: s.name, value: monthlyEq })
+      }
+
+      const category = (s.category || '').trim() || (t('common.uncategorized') ?? 'Sin categoría')
+      if (!categoryTotalsByCurrency.has(cur)) categoryTotalsByCurrency.set(cur, new Map())
+      const catMap = categoryTotalsByCurrency.get(cur)!
+      catMap.set(category, (catMap.get(category) ?? 0) + monthlyEq)
+    }
+
+    const out = new Map<
+      string,
+      {
+        count: number
+        monthlyTotal: number
+        avgMonthly: number
+        dueSoonCount: number
+        highest: { name: string; value: number } | null
+        topCategory: { label: string; value: number; pct: number } | null
+        windowDays: number
+      }
+    >()
+
+    const allCurrencies = new Set<string>([...totalsByCurrency.keys(), ...countsByCurrency.keys()])
+    for (const cur of allCurrencies) {
+      const count = countsByCurrency.get(cur) ?? 0
+      const monthlyTotal = totalsByCurrency.get(cur) ?? 0
+      const avgMonthly = count > 0 ? monthlyTotal / count : 0
+      const dueSoonCount = dueSoonByCurrency.get(cur) ?? 0
+      const highest = highestByCurrency.get(cur) ?? null
+      const catMap = categoryTotalsByCurrency.get(cur)
+      let topCategory: { label: string; value: number; pct: number } | null = null
+      if (catMap && monthlyTotal > 0) {
+        let best: { label: string; value: number } | null = null
+        for (const [label, value] of catMap.entries()) {
+          if (!best || value > best.value) best = { label, value }
+        }
+        if (best) {
+          topCategory = { label: best.label, value: best.value, pct: Math.round((best.value / monthlyTotal) * 100) }
+        }
+      }
+
+      out.set(cur, { count, monthlyTotal, avgMonthly, dueSoonCount, highest, topCategory, windowDays })
+    }
+
+    return out
+  }, [baseCurrency, displayMode, fxTick, state.settings.notifyDaysBefore, state.subscriptions, t])
+
   const nextItems = useMemo(() => {
     const now = new Date()
     const list = state.subscriptions
@@ -116,7 +206,7 @@ export function Dashboard() {
   const monthlyProjectionByCurrency = useMemo(() => {
     const now = new Date()
     const months = Array.from({ length: 12 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - (11 - i), 1))
-    const labels = months.map(d => d.toLocaleString(undefined, { month: 'short' }))
+    const labels = months.map(d => d.toLocaleString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short' }))
 
     const byCurrency = new Map<string, number[]>()
     for (const cur of currencies) {
@@ -177,12 +267,12 @@ export function Dashboard() {
       const top = sorted.slice(0, 5)
       const rest = sorted.slice(5)
       const restValue = rest.reduce((sum, i) => sum + i.value, 0)
-      const next = restValue > 0 ? [...top, { label: 'Otros', value: restValue }] : top
+      const next = restValue > 0 ? [...top, { label: t('common.other') ?? 'Otros', value: restValue }] : top
       map.set(cur, next)
     }
 
     return map
-  }, [baseCurrency, displayMode, fxTick, state.subscriptions])
+  }, [baseCurrency, displayMode, fxTick, state.subscriptions, t])
 
   const monthlyByCategoryByCurrency = useMemo(() => {
     const map = new Map<string, Map<string, number>>()
@@ -190,7 +280,7 @@ export function Dashboard() {
     for (const s of state.subscriptions) {
       const rawCur = (s.currency || 'USD').toUpperCase()
       const cur = displayMode === 'convertToBase' ? baseCurrency : rawCur
-      const category = (s.category || '').trim() || 'Sin categoría'
+      const category = (s.category || '').trim() || (t('common.uncategorized') ?? 'Sin categoría')
 
       if (!map.has(cur)) map.set(cur, new Map<string, number>())
       const catMap = map.get(cur)!
@@ -211,15 +301,15 @@ export function Dashboard() {
     }
 
     return out
-  }, [baseCurrency, displayMode, fxTick, state.subscriptions])
+  }, [baseCurrency, displayMode, fxTick, state.subscriptions, t])
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Gasto mensual (equivalente)</div>
+        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.monthlySpendTitle') ?? 'Gasto mensual (equivalente)'}</div>
         <div className="mt-2 flex flex-wrap gap-2">
           {totals.length === 0 ? (
-            <div className="text-sm text-slate-500">Sin suscripciones aún.</div>
+            <div className="text-sm text-slate-500">{t('dashboard.noSubscriptionsYet') ?? 'Sin suscripciones aún.'}</div>
           ) : (
             totals.map(([cur, amt]) => (
               <div key={cur} className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold dark:bg-slate-800">
@@ -228,18 +318,29 @@ export function Dashboard() {
             ))
           )}
         </div>
+        {displayMode === 'convertToBase' ? (
+          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {t('dashboard.fxRatesLabel') ?? 'FX rates'}: {fxStatus === 'loading'
+              ? (t('dashboard.fxUpdating') ?? 'actualizando…')
+              : fxStatus === 'ready'
+                ? (t('dashboard.fxReady') ?? 'reales (cacheadas)')
+                : fxStatus === 'unavailable'
+                  ? (t('dashboard.fxUnavailable') ?? 'no disponibles (fallback)')
+                  : (t('dashboard.fxIdle') ?? '—')}
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Próximas renovaciones</div>
+        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.upcomingRenewalsTitle') ?? 'Próximas renovaciones'}</div>
         <div className="mt-2 space-y-2">
           {nextItems.length === 0 ? (
-            <div className="text-sm text-slate-500">No hay datos todavía.</div>
+            <div className="text-sm text-slate-500">{t('dashboard.noDataYet') ?? 'No hay datos todavía.'}</div>
           ) : (
             nextItems.map(({ s, next }) => (
               <div key={s.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/60">
                 <div className="font-semibold">{s.name}</div>
-                <div className="text-slate-600 dark:text-slate-300">{next.toLocaleDateString()}</div>
+                <div className="text-slate-600 dark:text-slate-300">{next.toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US')}</div>
               </div>
             ))
           )}
@@ -247,9 +348,9 @@ export function Dashboard() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Gráficos</div>
+        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.chartsTitle') ?? 'Gráficos'}</div>
         {state.subscriptions.length === 0 ? (
-          <div className="mt-2 text-sm text-slate-500">Añade suscripciones para ver gráficos.</div>
+          <div className="mt-2 text-sm text-slate-500">{t('dashboard.addSubsToSeeCharts') ?? 'Añade suscripciones para ver gráficos.'}</div>
         ) : (
           <div className="mt-3 space-y-4">
             {currencies.map(cur => {
@@ -259,12 +360,37 @@ export function Dashboard() {
               const pieItems = monthlyDistributionByCurrency.get(cur) ?? []
               return (
                 <div key={cur} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
-                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">Moneda: {cur}</div>
+                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t('dashboard.currencyLabel', { cur }) ?? `Moneda: ${cur}`}</div>
+
+                  {(() => {
+                    const ins = insightsByCurrency.get(cur)
+                    if (!ins) return null
+                    return (
+                      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900">
+                          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('dashboard.kpiSubscriptions') ?? 'Suscripciones'}</div>
+                          <div className="mt-0.5 font-bold text-slate-900 dark:text-white">{ins.count}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900">
+                          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('dashboard.kpiAvgMonthly') ?? 'Media mensual'}</div>
+                          <div className="mt-0.5 font-bold text-slate-900 dark:text-white">{formatCurrency(ins.avgMonthly, cur)}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900">
+                          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('dashboard.kpiDueSoon', { days: ins.windowDays }) ?? `Vencen (≤ ${ins.windowDays}d)`}</div>
+                          <div className="mt-0.5 font-bold text-slate-900 dark:text-white">{ins.dueSoonCount}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900">
+                          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('dashboard.kpiTopCategory') ?? 'Top categoría'}</div>
+                          <div className="mt-0.5 font-bold text-slate-900 dark:text-white">{ins.topCategory ? `${ins.topCategory.label} · ${ins.topCategory.pct}%` : (t('common.none') ?? '—')}</div>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   <div className="mt-3 space-y-3">
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Proyección mensual (últimos 12 meses)</div>
+                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.projectionTitle') ?? 'Proyección mensual (últimos 12 meses)'}</div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -281,7 +407,11 @@ export function Dashboard() {
                             type="button"
                             className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
                             onClick={() => {
-                              const rows: Array<Array<string | number>> = [['Month', 'Amount', 'Currency']]
+                              const rows: Array<Array<string | number>> = [[
+                                t('dashboard.csvMonth') ?? 'Month',
+                                t('dashboard.csvAmount') ?? 'Amount',
+                                t('dashboard.csvCurrency') ?? 'Currency',
+                              ]]
                               for (let i = 0; i < monthlyProjectionByCurrency.labels.length; i++) {
                                 rows.push([monthlyProjectionByCurrency.labels[i], lineValues[i] ?? 0, cur])
                               }
@@ -304,7 +434,7 @@ export function Dashboard() {
 
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Top gasto anual (estimado)</div>
+                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.annualTopTitle') ?? 'Top gasto anual (estimado)'}</div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -321,7 +451,11 @@ export function Dashboard() {
                             type="button"
                             className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
                             onClick={() => {
-                              const rows: Array<Array<string | number>> = [['Name', 'AnnualAmount', 'Currency']]
+                              const rows: Array<Array<string | number>> = [[
+                                t('dashboard.csvName') ?? 'Name',
+                                t('dashboard.csvAnnualAmount') ?? 'AnnualAmount',
+                                t('dashboard.csvCurrency') ?? 'Currency',
+                              ]]
                               for (const item of barItems) {
                                 rows.push([item.label, item.value, cur])
                               }
@@ -334,7 +468,7 @@ export function Dashboard() {
                       </div>
                       <div ref={setChartEl(`${cur}:bar`)} className="mt-3">
                         {barItems.length === 0 ? (
-                          <div className="text-sm text-slate-500">Sin datos.</div>
+                          <div className="text-sm text-slate-500">{t('dashboard.noData') ?? 'Sin datos.'}</div>
                         ) : (
                           <SimpleBarChart items={barItems} formatValue={v => formatCurrency(v, cur)} />
                         )}
@@ -343,7 +477,7 @@ export function Dashboard() {
 
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Gasto mensual por categoría (equivalente)</div>
+                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.monthlyByCategoryTitle') ?? 'Gasto mensual por categoría (equivalente)'}</div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -360,7 +494,11 @@ export function Dashboard() {
                             type="button"
                             className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
                             onClick={() => {
-                              const rows: Array<Array<string | number>> = [['Category', 'MonthlyEquivalent', 'Currency']]
+                              const rows: Array<Array<string | number>> = [[
+                                t('dashboard.csvCategory') ?? 'Category',
+                                t('dashboard.csvMonthlyEquivalent') ?? 'MonthlyEquivalent',
+                                t('dashboard.csvCurrency') ?? 'Currency',
+                              ]]
                               for (const item of categoryItems) {
                                 rows.push([item.label, item.value, cur])
                               }
@@ -373,7 +511,7 @@ export function Dashboard() {
                       </div>
                       <div ref={setChartEl(`${cur}:cat`)} className="mt-3">
                         {categoryItems.length === 0 ? (
-                          <div className="text-sm text-slate-500">Sin datos.</div>
+                          <div className="text-sm text-slate-500">{t('dashboard.noData') ?? 'Sin datos.'}</div>
                         ) : (
                           <SimpleBarChart items={categoryItems} formatValue={v => formatCurrency(v, cur)} />
                         )}
@@ -382,7 +520,7 @@ export function Dashboard() {
 
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">Distribución (gasto mensual equivalente)</div>
+                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.distributionTitle') ?? 'Distribución (gasto mensual equivalente)'}</div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -399,7 +537,11 @@ export function Dashboard() {
                             type="button"
                             className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
                             onClick={() => {
-                              const rows: Array<Array<string | number>> = [['Name', 'MonthlyEquivalent', 'Currency']]
+                              const rows: Array<Array<string | number>> = [[
+                                t('dashboard.csvName') ?? 'Name',
+                                t('dashboard.csvMonthlyEquivalent') ?? 'MonthlyEquivalent',
+                                t('dashboard.csvCurrency') ?? 'Currency',
+                              ]]
                               for (const seg of pieItems) {
                                 rows.push([seg.label, seg.value, cur])
                               }

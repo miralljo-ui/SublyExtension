@@ -5,6 +5,7 @@ const KEY = 'subly:state'
 export const DEFAULT_SETTINGS: AppSettings = {
   notificationsEnabled: false,
   notifyDaysBefore: 2,
+  language: 'es',
   currencyDisplayMode: 'original',
   baseCurrency: 'USD',
 }
@@ -12,6 +13,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   const subscriptions = Array.isArray(input?.subscriptions) ? input!.subscriptions : []
   const rawSettings = (input as AppState | undefined)?.settings
+  const language = rawSettings?.language === 'en' ? 'en' : 'es'
   const display = rawSettings?.currencyDisplayMode === 'convertToBase' ? 'convertToBase' : 'original'
   const baseCurrency = String(rawSettings?.baseCurrency ?? DEFAULT_SETTINGS.baseCurrency).trim().toUpperCase() || DEFAULT_SETTINGS.baseCurrency
   return {
@@ -21,6 +23,7 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
       notifyDaysBefore: Number.isFinite(rawSettings?.notifyDaysBefore)
         ? Math.max(0, Math.min(30, Math.floor(rawSettings!.notifyDaysBefore)))
         : DEFAULT_SETTINGS.notifyDaysBefore,
+      language,
       currencyDisplayMode: display,
       baseCurrency,
     },
