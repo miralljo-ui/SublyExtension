@@ -63,76 +63,93 @@ async function fetchRatesFromApi(base: string): Promise<RatesMap | null> {
   const storedKey = typeof window !== 'undefined' ? localStorage.getItem('exchange_api_key') : undefined
   const apiKey = envKey ?? storedKey ?? undefined
 
-  // Prefer /latest (doesn't require a key on exchangerate.host). If you set a custom provider URL,
-  // we will try to add the key in a compatible way.
-  const baseUrl = envUrl && envUrl.length > 0 ? envUrl : 'https://api.exchangerate.host/latest'
-  const separator = baseUrl.includes('?') ? '&' : '?'
-  let url = baseUrl
-  const headers: Record<string, string> = {}
-
-  const isLive = /exchangerate\.host\/live/.test(baseUrl)
-  const isLatest = /exchangerate\.host\/latest/.test(baseUrl)
-
-  if (isLive) {
-    // /live: source=BASE, currencies=USD,EUR,...
-    url += `${separator}source=${encodeURIComponent(normalizedBase)}`
-    const majors = MAJOR_CURRENCIES.map(c => c.code).filter(c => c !== normalizedBase)
-    url += `&currencies=${encodeURIComponent(majors.join(','))}`
-    url += `&format=1`
-  } else {
-    // /latest (or compatible): base=BASE
-    url += `${separator}base=${encodeURIComponent(normalizedBase)}`
-  }
-
-  if (apiKey) {
-    const isExchangerateHost = baseUrl.includes('exchangerate.host')
-    if (isExchangerateHost && isLatest) {
-      // exchangerate.host/latest does not require a key; omit it.
-    } else if (isExchangerateHost && isLive) {
-      url += `&access_key=${encodeURIComponent(apiKey)}`
-    } else if (baseUrl.includes('apilayer')) {
-      url += `&access_key=${encodeURIComponent(apiKey)}`
-      headers.apikey = apiKey
-    } else if (baseUrl.includes('openexchangerates')) {
-      url += `&app_id=${encodeURIComponent(apiKey)}`
-    } else {
-      url += `&access_key=${encodeURIComponent(apiKey)}`
-    }
-  }
-
   const maxAttempts = 3
   const baseDelay = 500
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const res = await fetch(url, { headers })
-      if (!res.ok) {
+
+  const tryFetchJson = async (url: string, headers?: Record<string, string>) => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fetch(url, { headers })
+        if (!res.ok) {
+          if (attempt === maxAttempts) return null
+          await new Promise(r => setTimeout(r, baseDelay * attempt))
+          continue
+        }
+        return await res.json()
+      } catch {
         if (attempt === maxAttempts) return null
         await new Promise(r => setTimeout(r, baseDelay * attempt))
-        continue
       }
+    }
+    return null
+  }
 
-      const json: any = await res.json()
-      if (isLive && json && typeof json.quotes === 'object') {
-        // quotes: { BASEUSD: 1.25, BASEEUR: 0.95, ... }
-        const rates: RatesMap = {}
-        for (const k of Object.keys(json.quotes)) {
-          if (k.startsWith(normalizedBase)) {
-            const code = k.slice(normalizedBase.length)
-            rates[code] = Number(json.quotes[k])
-          }
+  const buildProviderUrl = (baseUrl: string) => {
+    const separator = baseUrl.includes('?') ? '&' : '?'
+    let url = baseUrl
+
+    const isLive = /exchangerate\.host\/live/.test(baseUrl)
+    const isLatest = /exchangerate\.host\/latest/.test(baseUrl)
+    const isErApi = /open\.er-api\.com\/v6\/latest\//.test(baseUrl)
+
+    if (isErApi) {
+      // open.er-api.com: base is in the path
+      url = `https://open.er-api.com/v6/latest/${encodeURIComponent(normalizedBase)}`
+      return { url, headers: undefined as Record<string, string> | undefined, isLive: false }
+    }
+
+    const headers: Record<string, string> = {}
+
+    if (isLive) {
+      url += `${separator}source=${encodeURIComponent(normalizedBase)}`
+      const majors = MAJOR_CURRENCIES.map(c => c.code).filter(c => c !== normalizedBase)
+      url += `&currencies=${encodeURIComponent(majors.join(','))}`
+      url += `&format=1`
+    } else {
+      url += `${separator}base=${encodeURIComponent(normalizedBase)}`
+    }
+
+    if (apiKey) {
+      const isExchangerateHost = baseUrl.includes('exchangerate.host')
+      if (isExchangerateHost && isLatest) {
+        // Some deployments may require a key; keep old behavior (omit by default).
+      } else if (isExchangerateHost && isLive) {
+        url += `&access_key=${encodeURIComponent(apiKey)}`
+      } else if (baseUrl.includes('apilayer')) {
+        url += `&access_key=${encodeURIComponent(apiKey)}`
+        headers.apikey = apiKey
+      } else if (baseUrl.includes('openexchangerates')) {
+        url += `&app_id=${encodeURIComponent(apiKey)}`
+      } else {
+        url += `&access_key=${encodeURIComponent(apiKey)}`
+      }
+    }
+
+    return { url, headers, isLive }
+  }
+
+  const providers = envUrl && envUrl.length > 0
+    ? [envUrl]
+    : ['https://api.exchangerate.host/latest', 'https://open.er-api.com/v6/latest/']
+
+  for (const baseUrl of providers) {
+    const { url, headers, isLive } = buildProviderUrl(baseUrl)
+    const json: any = await tryFetchJson(url, headers)
+    if (!json) continue
+
+    if (isLive && json && typeof json.quotes === 'object') {
+      const rates: RatesMap = {}
+      for (const k of Object.keys(json.quotes)) {
+        if (k.startsWith(normalizedBase)) {
+          const code = k.slice(normalizedBase.length)
+          rates[code] = Number(json.quotes[k])
         }
-        return rates
       }
+      if (Object.keys(rates).length > 0) return rates
+    }
 
-      if (json && json.rates && typeof json.rates === 'object') {
-        return json.rates as RatesMap
-      }
-
-      if (attempt === maxAttempts) return null
-      await new Promise(r => setTimeout(r, baseDelay * attempt))
-    } catch {
-      if (attempt === maxAttempts) return null
-      await new Promise(r => setTimeout(r, baseDelay * attempt))
+    if (json && json.rates && typeof json.rates === 'object') {
+      return json.rates as RatesMap
     }
   }
 

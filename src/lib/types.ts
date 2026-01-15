@@ -55,6 +55,10 @@ export type AppSettings = {
   // so they can be filtered in Google Calendar.
   calendarUseDedicatedCalendar?: boolean
   calendarSubscriptionsCalendarId?: string
+
+  // Google Drive (appDataFolder) backup
+  driveBackupFileId?: string
+  driveLastBackupAt?: string // ISO
 }
 
 export type AppState = {

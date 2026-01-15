@@ -1,10 +1,25 @@
+import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { MAJOR_CURRENCIES } from '../lib/types'
 import { useI18n } from '../lib/i18n'
+import { useToast } from '../components/Toast'
+import { driveLoadAppStateJson, driveSaveAppStateJson } from '../lib/googleDrive'
+import { normalizeState } from '../lib/storage'
 
 export function Settings() {
-  const { state, setSettings } = useStore()
+  const { state, setSettings, setSubscriptions } = useStore()
   const { t, language } = useI18n()
+  const toast = useToast()
+
+  const [driveBusy, setDriveBusy] = useState<null | 'save' | 'restore'>(null)
+
+  const lastBackupLabel = useMemo(() => {
+    const raw = String(state.settings.driveLastBackupAt || '').trim()
+    if (!raw) return t('common.none') ?? '—'
+    const d = new Date(raw)
+    if (Number.isNaN(d.getTime())) return raw
+    return d.toLocaleString(language === 'es' ? 'es-ES' : 'en-US')
+  }, [language, state.settings.driveLastBackupAt, t])
 
   function setLanguage(next: 'es' | 'en') {
     setSettings({
@@ -58,6 +73,74 @@ export function Settings() {
   }
 
   const calendarHref = 'https://calendar.google.com/calendar/u/0/r'
+
+  async function saveBackupToDrive() {
+    if (driveBusy) return
+    setDriveBusy('save')
+    try {
+      const payload = JSON.stringify({ version: 1, savedAt: new Date().toISOString(), state }, null, 2)
+      const result = await driveSaveAppStateJson({
+        json: payload,
+        fileId: state.settings.driveBackupFileId,
+        interactive: true,
+      })
+
+      setSettings({
+        ...state.settings,
+        driveBackupFileId: result.fileId,
+        driveLastBackupAt: result.modifiedTime ?? new Date().toISOString(),
+      })
+
+      toast.success(t('drive.backupSaved') ?? 'Copia guardada en Google Drive.')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error((t('drive.backupSaveFailed') ?? 'No se pudo guardar la copia en Google Drive.') + (msg ? ` ${msg}` : ''))
+    } finally {
+      setDriveBusy(null)
+    }
+  }
+
+  async function restoreBackupFromDrive() {
+    if (driveBusy) return
+    const confirmText = t('drive.restoreConfirm') ?? 'Esto reemplazará tus datos locales con los de Drive. ¿Continuar?'
+    if (!window.confirm(confirmText)) return
+
+    setDriveBusy('restore')
+    try {
+      const loaded = await driveLoadAppStateJson({
+        fileId: state.settings.driveBackupFileId,
+        interactive: true,
+      })
+
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(loaded.jsonText)
+      } catch {
+        throw new Error('Invalid JSON in Drive backup file.')
+      }
+
+      // Accept either: { state: AppState } wrapper, or an AppState-like object.
+      const rawState = (parsed && typeof parsed === 'object' && 'state' in (parsed as any))
+        ? (parsed as any).state
+        : parsed
+
+      const normalized = normalizeState(rawState as any)
+      setSubscriptions(normalized.subscriptions)
+      setSettings({
+        ...normalized.settings,
+        // Preserve Drive metadata so next save/restore uses the same file.
+        driveBackupFileId: loaded.fileId,
+        driveLastBackupAt: loaded.modifiedTime ?? new Date().toISOString(),
+      })
+
+      toast.success(t('drive.backupRestored') ?? 'Datos restaurados desde Google Drive.')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error((t('drive.backupRestoreFailed') ?? 'No se pudo restaurar desde Google Drive.') + (msg ? ` ${msg}` : ''))
+    } finally {
+      setDriveBusy(null)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -191,6 +274,36 @@ export function Settings() {
           >
             {t('settings.openGoogleCalendar') ?? 'Abrir Google Calendar'}
           </a>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="text-lg font-bold">{t('drive.title') ?? 'Google Drive (backup)'}</div>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          {t('drive.body') ?? 'Guarda y restaura tus datos usando la carpeta oculta de la app (appDataFolder).'}
+        </p>
+
+        <div className="mt-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {t('drive.lastBackup') ?? 'Última copia'}: {lastBackupLabel}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+            onClick={saveBackupToDrive}
+            disabled={driveBusy !== null}
+          >
+            {driveBusy === 'save' ? (t('drive.saving') ?? 'Guardando…') : (t('drive.save') ?? 'Guardar en Drive')}
+          </button>
+          <button
+            type="button"
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+            onClick={restoreBackupFromDrive}
+            disabled={driveBusy !== null}
+          >
+            {driveBusy === 'restore' ? (t('drive.restoring') ?? 'Restaurando…') : (t('drive.restore') ?? 'Restaurar desde Drive')}
+          </button>
         </div>
       </div>
     </div>

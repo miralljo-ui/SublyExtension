@@ -122,9 +122,23 @@ async function calendarApiRequest<T>(args: {
   const text = await res.text()
   if (!res.ok) {
     const msg = text || `${res.status} ${res.statusText}`
-    throw new Error(msg)
+    const err = new Error(msg)
+    ;(err as any).status = res.status
+    ;(err as any).body = text
+    throw err
   }
   return (text ? (JSON.parse(text) as T) : (undefined as T))
+}
+
+function getHttpStatus(e: unknown): number | undefined {
+  if (!e || typeof e !== 'object') return undefined
+  const s = (e as any).status
+  return typeof s === 'number' ? s : undefined
+}
+
+function shouldPurgeToken(status: number | undefined): boolean {
+  // 401/403 are the typical cases for invalid/expired token or missing consent.
+  return status === 401 || status === 403
 }
 
 export type UpsertRecurringAllDayEventInput = {
@@ -160,13 +174,19 @@ export async function upsertRecurringAllDayEvent(input: UpsertRecurringAllDayEve
 
   try {
     if (input.eventId) {
-      const updated = await calendarApiRequest<{ id: string }>({
-        token,
-        method: 'PATCH',
-        path: `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.eventId)}`,
-        body,
-      })
-      return { calendarId, eventId: updated.id, syncedAt: new Date().toISOString() }
+      try {
+        const updated = await calendarApiRequest<{ id: string }>({
+          token,
+          method: 'PATCH',
+          path: `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.eventId)}`,
+          body,
+        })
+        return { calendarId, eventId: updated.id, syncedAt: new Date().toISOString() }
+      } catch (e) {
+        // If the event was deleted or the ID is stale, recreate it.
+        const status = getHttpStatus(e)
+        if (status !== 404) throw e
+      }
     }
 
     const created = await calendarApiRequest<{ id: string }>({
@@ -177,8 +197,10 @@ export async function upsertRecurringAllDayEvent(input: UpsertRecurringAllDayEve
     })
     return { calendarId, eventId: created.id, syncedAt: new Date().toISOString() }
   } catch (e) {
-    // If token expired/invalid, purge it so the next interactive call can recover.
-    await removeCachedToken(token)
+    const status = getHttpStatus(e)
+    if (shouldPurgeToken(status)) {
+      await removeCachedToken(token)
+    }
     throw e
   }
 }
@@ -194,7 +216,12 @@ export async function deleteCalendarEvent(args: { calendarId?: string; eventId: 
       path: `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(args.eventId)}`,
     })
   } catch (e) {
-    await removeCachedToken(token)
+    const status = getHttpStatus(e)
+    // If it's already gone, treat as success.
+    if (status === 404) return
+    if (shouldPurgeToken(status)) {
+      await removeCachedToken(token)
+    }
     throw e
   }
 }

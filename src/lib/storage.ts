@@ -10,9 +10,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   baseCurrency: 'USD',
   calendarAutoSyncAll: false,
   calendarUseDedicatedCalendar: false,
+  driveBackupFileId: undefined,
+  driveLastBackupAt: undefined,
 }
 
-function normalizeState(input: Partial<AppState> | null | undefined): AppState {
+export function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   const subscriptions = Array.isArray(input?.subscriptions) ? input!.subscriptions : []
   const rawSettings = (input as AppState | undefined)?.settings
   const language = rawSettings?.language === 'en' ? 'en' : 'es'
@@ -21,6 +23,8 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   const calendarAutoSyncAll = Boolean(rawSettings?.calendarAutoSyncAll ?? DEFAULT_SETTINGS.calendarAutoSyncAll)
   const calendarUseDedicatedCalendar = Boolean(rawSettings?.calendarUseDedicatedCalendar ?? DEFAULT_SETTINGS.calendarUseDedicatedCalendar)
   const calendarSubscriptionsCalendarId = String(rawSettings?.calendarSubscriptionsCalendarId ?? '').trim() || undefined
+  const driveBackupFileId = String(rawSettings?.driveBackupFileId ?? '').trim() || undefined
+  const driveLastBackupAt = String(rawSettings?.driveLastBackupAt ?? '').trim() || undefined
   return {
     subscriptions,
     settings: {
@@ -34,6 +38,8 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
       calendarAutoSyncAll,
       calendarUseDedicatedCalendar,
       calendarSubscriptionsCalendarId,
+      driveBackupFileId,
+      driveLastBackupAt,
     },
   }
 }

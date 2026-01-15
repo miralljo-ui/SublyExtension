@@ -19,10 +19,18 @@
     }
   },
   "permissions": ["sidePanel", "storage", "alarms", "notifications", "identity"],
-  "host_permissions": ["https://calendar.google.com/*", "https://www.googleapis.com/*", "https://api.exchangerate.host/*"],
+  "host_permissions": [
+    "https://calendar.google.com/*",
+    "https://www.googleapis.com/*",
+    "https://api.exchangerate.host/*",
+    "https://open.er-api.com/*"
+  ],
   "oauth2": {
     "client_id": "297517817732-ji5a0of4i995otdrtoajn9cftfih20fb.apps.googleusercontent.com",
-    "scopes": ["https://www.googleapis.com/auth/calendar"]
+    "scopes": [
+      "https://www.googleapis.com/auth/calendar",
+      "https://www.googleapis.com/auth/drive.appdata"
+    ]
   },
   "background": {
     "service_worker": "ext-background.js",

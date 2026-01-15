@@ -8,6 +8,7 @@ import { ImportExport } from '../components/ImportExport'
 import { useToast } from '../components/Toast'
 import { useStore } from '../store'
 import { useI18n } from '../lib/i18n'
+import { driveSaveAppStateJson } from '../lib/googleDrive'
 
 function localeForLanguage(language: 'es' | 'en') {
   return language === 'es' ? 'es-ES' : 'en-US'
@@ -63,6 +64,40 @@ export function SubscriptionsView() {
   useEffect(() => {
     settingsRef.current = state.settings
   }, [state.settings])
+
+  const driveAutoErrorShownRef = useRef(false)
+
+  const autoBackupToDrive = useCallback(async (nextSubscriptions: Subscription[]) => {
+    const fileId = String(settingsRef.current.driveBackupFileId || '').trim()
+    if (!fileId) return
+
+    try {
+      const nextState = {
+        ...state,
+        subscriptions: nextSubscriptions,
+        settings: settingsRef.current,
+      }
+
+      const payload = JSON.stringify({ version: 1, savedAt: new Date().toISOString(), state: nextState }, null, 2)
+      const result = await driveSaveAppStateJson({ json: payload, fileId, interactive: false })
+
+      // Keep an approximate last-backup timestamp for UI.
+      setSettings({
+        ...settingsRef.current,
+        driveBackupFileId: result.fileId,
+        driveLastBackupAt: result.modifiedTime ?? new Date().toISOString(),
+      })
+    } catch (e) {
+      // Auto-backup should never block user actions.
+      if (driveAutoErrorShownRef.current) return
+      driveAutoErrorShownRef.current = true
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error(
+        (t('drive.backupSaveFailed') ?? 'No se pudo guardar la copia en Google Drive.') +
+          (msg ? ` ${msg}` : ''),
+      )
+    }
+  }, [setSettings, state, t, toast])
 
   const subscriptionsCalendarIdRef = useRef<string | null>(state.settings.calendarSubscriptionsCalendarId ?? null)
   useEffect(() => {
@@ -206,6 +241,9 @@ export function SubscriptionsView() {
         }
       })()
     }
+
+    // Auto-backup to Drive (best-effort) if a backup file has been configured.
+    void autoBackupToDrive(list)
   }
 
   function remove(id: string) {
@@ -232,6 +270,9 @@ export function SubscriptionsView() {
     setSubscriptions(nextList)
     if (editingId === id) resetForm()
     toast.success(t('subscriptions.toastDeleted') ?? 'Suscripción eliminada.')
+
+    // Auto-backup to Drive (best-effort) if a backup file has been configured.
+    void autoBackupToDrive(nextList)
 
     if (eventId) {
       void (async () => {
@@ -308,15 +349,42 @@ export function SubscriptionsView() {
         }
       }
 
-      const link = await upsertRecurringAllDayEvent({
-        calendarId: targetCalendarId,
-        eventId: shouldMigrate ? undefined : s.calendar?.eventId,
+      const getStatus = (e: unknown): number | undefined => {
+        if (!e || typeof e !== 'object') return undefined
+        const s = (e as any).status
+        return typeof s === 'number' ? s : undefined
+      }
+
+      const buildUpsertArgs = (calendarId: string, eventId?: string) => ({
+        calendarId,
+        eventId,
         summary: `${s.name} · ${t('subscriptions.renewal') ?? 'Renovación'}`,
         description: detailsLines.join('\n'),
         startDateYmd: startYmd,
         period: s.period,
         interactive,
       })
+
+      let link: Awaited<ReturnType<typeof upsertRecurringAllDayEvent>>
+      try {
+        link = await upsertRecurringAllDayEvent(buildUpsertArgs(targetCalendarId, shouldMigrate ? undefined : s.calendar?.eventId))
+      } catch (e) {
+        const status = getStatus(e)
+        if (status !== 404) throw e
+
+        // Calendar not found / stale calendarId. Recover by re-ensuring the dedicated calendar or falling back to primary.
+        if (calendarUseDedicatedCalendar) {
+          const ensured = await ensureSubscriptionsCalendar({ interactive })
+          subscriptionsCalendarIdRef.current = ensured
+          setSettings({
+            ...settingsRef.current,
+            calendarSubscriptionsCalendarId: ensured,
+          })
+          link = await upsertRecurringAllDayEvent(buildUpsertArgs(ensured, undefined))
+        } else {
+          link = await upsertRecurringAllDayEvent(buildUpsertArgs('primary', undefined))
+        }
+      }
 
       const updated = current.slice()
       updated[idx] = {
@@ -648,12 +716,51 @@ export function SubscriptionsView() {
           <ImportExport items={state.subscriptions} onImport={setSubscriptions} />
           <button
             type="button"
-            className={`rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-60`}
+            className={`inline-flex h-9 w-9 items-center justify-center rounded-md bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-60`}
             disabled={state.subscriptions.length === 0 || syncBusyAll}
             onClick={() => syncAll(true)}
             title={t('subscriptions.syncAll') ?? 'Sincronizar todas'}
+            aria-label={t('subscriptions.syncAll') ?? 'Sincronizar todas'}
+            aria-busy={syncBusyAll}
           >
-            {syncBusyAll ? (t('subscriptions.syncing') ?? 'Sincronizando…') : (t('subscriptions.syncAll') ?? 'Sync todas')}
+            {syncBusyAll ? (
+              <svg
+                viewBox="0 0 24 24"
+                className="h-5 w-5 opacity-70"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 2v4" />
+                <path d="M12 18v4" />
+                <path d="M4.93 4.93l2.83 2.83" />
+                <path d="M16.24 16.24l2.83 2.83" />
+                <path d="M2 12h4" />
+                <path d="M18 12h4" />
+                <path d="M4.93 19.07l2.83-2.83" />
+                <path d="M16.24 7.76l2.83-2.83" />
+              </svg>
+            ) : (
+              <svg
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 12a9 9 0 0 0-15.5-6.36" />
+                <path d="M3 4v6h6" />
+                <path d="M3 12a9 9 0 0 0 15.5 6.36" />
+                <path d="M21 20v-6h-6" />
+              </svg>
+            )}
+            <span className="sr-only">{syncBusyAll ? (t('subscriptions.syncing') ?? 'Sincronizando…') : (t('subscriptions.syncAll') ?? 'Sincronizar todas')}</span>
           </button>
           <button
             type="button"
