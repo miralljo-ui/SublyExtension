@@ -43,6 +43,20 @@ export function Settings() {
     })
   }
 
+  function toggleCalendarAutoSyncAll(enabled: boolean) {
+    setSettings({
+      ...state.settings,
+      calendarAutoSyncAll: enabled,
+    })
+  }
+
+  function toggleCalendarDedicated(enabled: boolean) {
+    setSettings({
+      ...state.settings,
+      calendarUseDedicatedCalendar: enabled,
+    })
+  }
+
   const calendarHref = 'https://calendar.google.com/calendar/u/0/r'
 
   return (
@@ -137,6 +151,37 @@ export function Settings() {
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           {t('settings.googleCalendarBody') ?? 'Se abre en una pestaña por seguridad (Google Calendar no se puede embeber en el panel).'}
         </p>
+
+        <div className="mt-4">
+          <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('settings.calendarSyncTitle') ?? 'Sincronización'}</div>
+
+          <label className="mt-2 flex items-center gap-2 text-sm font-semibold">
+            <input
+              type="checkbox"
+              checked={Boolean(state.settings.calendarUseDedicatedCalendar)}
+              onChange={e => toggleCalendarDedicated(e.target.checked)}
+              className="h-4 w-4"
+            />
+            {t('settings.calendarDedicatedLabel') ?? 'Usar calendario dedicado para suscripciones'}
+          </label>
+          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {t('settings.calendarDedicatedHint') ?? 'Si está activo, los eventos se publican en un calendario separado para poder filtrarlos en Google Calendar.'}
+          </div>
+
+          <label className="mt-2 flex items-center gap-2 text-sm font-semibold">
+            <input
+              type="checkbox"
+              checked={Boolean(state.settings.calendarAutoSyncAll)}
+              onChange={e => toggleCalendarAutoSyncAll(e.target.checked)}
+              className="h-4 w-4"
+            />
+            {t('settings.calendarAutoSyncAllLabel') ?? 'Auto-sync de suscripciones'}
+          </label>
+          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {t('settings.calendarAutoSyncAllHint') ?? 'Si está activo, los cambios en Suscripciones intentarán sincronizarse automáticamente (si ya hay autorización).'}
+          </div>
+        </div>
+
         <div className="mt-4">
           <a
             className="inline-flex rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"

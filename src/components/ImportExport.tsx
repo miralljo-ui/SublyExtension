@@ -3,6 +3,7 @@ import type { Subscription } from '../lib/types'
 import { MAJOR_CURRENCIES } from '../lib/types'
 import { createId } from '../lib/storage'
 import { useI18n } from '../lib/i18n'
+import { useToast } from './Toast'
 
 type ImportExportProps = {
   items: Subscription[]
@@ -70,6 +71,7 @@ function normalizeImportedSubscription(input: any): Subscription | null {
 export function ImportExport({ items, onImport }: ImportExportProps) {
   const { t } = useI18n()
   const [status, setStatus] = useState<ImportStatus>(null)
+  const toast = useToast()
 
   const exportFilename = useMemo(() => {
     const d = new Date()
@@ -80,9 +82,8 @@ export function ImportExport({ items, onImport }: ImportExportProps) {
   }, [])
 
   function handleExport() {
-    setStatus(null)
     downloadJson(exportFilename, items)
-    setStatus({ type: 'success', message: t('common.exported') ?? 'Exportado.' })
+    toast.success(t('common.exported') ?? 'Exportado.')
   }
 
   function handleImportFile(file: File) {

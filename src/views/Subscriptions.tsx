@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MAJOR_CURRENCIES } from '../lib/types'
 import type { Period, Subscription } from '../lib/types'
 import { createId, nextRenewalDate } from '../lib/storage'
-import { buildGoogleCalendarEventEditUrl } from '../lib/googleCalendar'
+import { deleteCalendarEvent, ensureSubscriptionsCalendar, formatDateYMDLocal, upsertRecurringAllDayEvent } from '../lib/googleCalendar'
 import { convertCurrencySync, formatCurrency } from '../lib/money'
 import { ImportExport } from '../components/ImportExport'
+import { useToast } from '../components/Toast'
 import { useStore } from '../store'
 import { useI18n } from '../lib/i18n'
 
@@ -35,11 +36,45 @@ function isValidYmd(ymd: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(ymd || '').trim())
 }
 
+function computeSyncSignature(subscriptions: Subscription[]) {
+  return JSON.stringify(
+    subscriptions.map(s => ({
+      id: s.id,
+      name: s.name,
+      category: s.category,
+      price: s.price,
+      currency: s.currency,
+      period: s.period,
+      startDate: s.startDate,
+    })),
+  )
+}
+
 export function SubscriptionsView() {
-  const { state, setSubscriptions } = useStore()
+  const { state, setSubscriptions, setSettings } = useStore()
   const { t, language } = useI18n()
+  const toast = useToast()
   const displayMode = state.settings.currencyDisplayMode ?? 'original'
   const baseCurrency = (state.settings.baseCurrency || 'USD').toUpperCase()
+  const calendarAutoSyncAll = Boolean(state.settings.calendarAutoSyncAll)
+  const calendarUseDedicatedCalendar = Boolean(state.settings.calendarUseDedicatedCalendar)
+
+  const settingsRef = useRef(state.settings)
+  useEffect(() => {
+    settingsRef.current = state.settings
+  }, [state.settings])
+
+  const subscriptionsCalendarIdRef = useRef<string | null>(state.settings.calendarSubscriptionsCalendarId ?? null)
+  useEffect(() => {
+    subscriptionsCalendarIdRef.current = state.settings.calendarSubscriptionsCalendarId ?? null
+  }, [state.settings.calendarSubscriptionsCalendarId])
+
+  const subscriptionsRef = useRef<Subscription[]>(state.subscriptions)
+  useEffect(() => {
+    subscriptionsRef.current = state.subscriptions
+  }, [state.subscriptions])
+
+  const [syncBusyAll, setSyncBusyAll] = useState(false)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -125,7 +160,10 @@ export function SubscriptionsView() {
 
     const cat = category.trim()
 
+    const isEdit = Boolean(editingId)
+    const existing = editingId ? state.subscriptions.find(s => s.id === editingId) : undefined
     const next: Subscription = {
+      ...existing,
       id: editingId ?? createId(),
       name: trimmed,
       category: cat ? cat : undefined,
@@ -139,29 +177,215 @@ export function SubscriptionsView() {
     const idx = list.findIndex(s => s.id === next.id)
     if (idx >= 0) list[idx] = next
     else list.unshift(next)
+
+    // Keep refs in sync so a subsequent sync sees the latest data.
+    subscriptionsRef.current = list
+    // If auto-sync is enabled, avoid triggering the background syncAll for this same change.
+    if (calendarAutoSyncAll) {
+      lastSyncSignatureRef.current = computeSyncSignature(list)
+    }
+
     setSubscriptions(list)
     closeModal()
+
+    toast.success(
+      isEdit
+        ? (t('subscriptions.toastUpdated') ?? 'Suscripción actualizada.')
+        : (t('subscriptions.toastCreated') ?? 'Suscripción creada.'),
+    )
+
+    // Auto-configure the Calendar event on add/edit when enabled.
+    if (calendarAutoSyncAll) {
+      void (async () => {
+        const result = await syncOne(next.id, true, { quiet: true })
+        if (!result.ok) {
+          toast.error(
+            (t('subscriptions.syncFailed') ?? 'Error al sincronizar.') +
+              (result.error ? ` ${result.error}` : ''),
+          )
+        }
+      })()
+    }
   }
 
   function remove(id: string) {
-    setSubscriptions(state.subscriptions.filter(s => s.id !== id))
+    const current = subscriptionsRef.current
+    const s = current.find(x => x.id === id)
+    if (!s) return
+
+    const confirmText =
+      t('subscriptions.deleteConfirm', { name: s.name }) ??
+      `¿Eliminar “${s.name}”? También se borrará su evento en Google Calendar si existe.`
+
+    if (!window.confirm(confirmText)) return
+
+    const eventId = s.calendar?.eventId
+    const calendarId = s.calendar?.calendarId ?? 'primary'
+
+    const nextList = current.filter(x => x.id !== id)
+    subscriptionsRef.current = nextList
+    // Avoid triggering syncAll for a deletion (syncAll can't delete events).
+    if (calendarAutoSyncAll) {
+      lastSyncSignatureRef.current = computeSyncSignature(nextList)
+    }
+
+    setSubscriptions(nextList)
     if (editingId === id) resetForm()
+    toast.success(t('subscriptions.toastDeleted') ?? 'Suscripción eliminada.')
+
+    if (eventId) {
+      void (async () => {
+        try {
+          await deleteCalendarEvent({ calendarId, eventId, interactive: true })
+          toast.success(t('subscriptions.calendarEventDeleted') ?? 'Evento eliminado de Google Calendar.')
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          toast.error(
+            (t('subscriptions.calendarDeleteFailed') ?? 'No se pudo borrar el evento en Google Calendar.') +
+              (msg ? ` ${msg}` : ''),
+          )
+        }
+      })()
+    }
   }
 
-  function openCalendarDraft(s: Subscription) {
-    const next = nextRenewalDate(s.startDate, s.period, new Date())
-    const rawCur = (s.currency || 'USD').toUpperCase()
-    const shownCurrency = displayMode === 'convertToBase' ? baseCurrency : rawCur
-    const shownAmount = displayMode === 'convertToBase' ? convertCurrencySync(s.price, rawCur, baseCurrency) : s.price
-    const url = buildGoogleCalendarEventEditUrl({
-      title: `${s.name} · ${t('subscriptions.renewal') ?? 'Renovación'}`,
-      details: `${t('subscriptions.detailsAmount') ?? 'Importe'}: ${formatCurrency(shownAmount, shownCurrency)}\n${t('subscriptions.detailsPeriod') ?? 'Periodo'}: ${s.period}`,
-      startDate: next,
-      allDay: true,
-      recurrence: { period: s.period },
-    })
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
+  const syncSignature = useMemo(() => computeSyncSignature(state.subscriptions), [state.subscriptions])
+
+  const lastSyncSignatureRef = useRef(syncSignature)
+  useEffect(() => {
+    lastSyncSignatureRef.current = syncSignature
+  }, [])
+
+  const syncOne = useCallback(async (
+    id: string,
+    interactive: boolean,
+    opts?: { quiet?: boolean },
+  ): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const current = subscriptionsRef.current
+      const idx = current.findIndex(s => s.id === id)
+      if (idx < 0) return { ok: false, error: 'Subscription not found' }
+      const s = current[idx]
+
+      let targetCalendarId = s.calendar?.calendarId ?? 'primary'
+      if (calendarUseDedicatedCalendar) {
+        let ensured = subscriptionsCalendarIdRef.current
+        if (!ensured) {
+          ensured = await ensureSubscriptionsCalendar({ interactive })
+          subscriptionsCalendarIdRef.current = ensured
+          setSettings({
+            ...settingsRef.current,
+            calendarSubscriptionsCalendarId: ensured,
+          })
+        }
+        targetCalendarId = ensured
+      }
+
+      const next = nextRenewalDate(s.startDate, s.period, new Date())
+      const startYmd = formatDateYMDLocal(next)
+
+      const rawCur = (s.currency || 'USD').toUpperCase()
+      const shownCurrency = displayMode === 'convertToBase' ? baseCurrency : rawCur
+      const shownAmount = displayMode === 'convertToBase' ? convertCurrencySync(s.price, rawCur, baseCurrency) : s.price
+
+      const detailsLines = [
+        `${t('subscriptions.detailsAmount') ?? 'Importe'}: ${formatCurrency(shownAmount, shownCurrency)}`,
+        `${t('subscriptions.detailsPeriod') ?? 'Periodo'}: ${s.period}`,
+      ]
+      const cat = String(s.category || '').trim()
+      if (cat) detailsLines.push(`${t('subscriptions.filterCategory') ?? 'Categoría'}: ${cat}`)
+
+      // If an existing event lives in a different calendar, migrate it by deleting the old one
+      // and creating a new event in the target calendar.
+      const existingEventId = s.calendar?.eventId
+      const existingCalendarId = s.calendar?.calendarId
+      const shouldMigrate = Boolean(existingEventId && existingCalendarId && existingCalendarId !== targetCalendarId)
+      if (shouldMigrate) {
+        try {
+          await deleteCalendarEvent({ calendarId: existingCalendarId, eventId: existingEventId!, interactive })
+        } catch {
+          // Best-effort migration. If deletion fails, continue to create the event in the target calendar.
+        }
+      }
+
+      const link = await upsertRecurringAllDayEvent({
+        calendarId: targetCalendarId,
+        eventId: shouldMigrate ? undefined : s.calendar?.eventId,
+        summary: `${s.name} · ${t('subscriptions.renewal') ?? 'Renovación'}`,
+        description: detailsLines.join('\n'),
+        startDateYmd: startYmd,
+        period: s.period,
+        interactive,
+      })
+
+      const updated = current.slice()
+      updated[idx] = {
+        ...s,
+        calendar: {
+          ...link,
+          lastError: undefined,
+        },
+      }
+      setSubscriptions(updated)
+      return { ok: true }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const current = subscriptionsRef.current
+      const idx = current.findIndex(s => s.id === id)
+      if (idx >= 0) {
+        const s = current[idx]
+        const updated = current.slice()
+        updated[idx] = {
+          ...s,
+          calendar: {
+            ...(s.calendar ?? { calendarId: 'primary' }),
+            lastError: msg,
+            syncedAt: s.calendar?.syncedAt,
+          },
+        }
+        setSubscriptions(updated)
+      }
+      return { ok: false, error: msg }
+    } finally {
+    }
+  }, [baseCurrency, calendarUseDedicatedCalendar, displayMode, setSettings, setSubscriptions, t])
+
+  const syncAll = useCallback(async (interactive: boolean) => {
+    if (syncBusyAll) return
+    setSyncBusyAll(true)
+    try {
+      const list = subscriptionsRef.current
+      let ok = 0
+      let fail = 0
+      let firstError: string | null = null
+
+      for (const s of list) {
+        const result = await syncOne(s.id, interactive, { quiet: true })
+        if (result.ok) ok += 1
+        else {
+          fail += 1
+          if (!firstError && result.error) firstError = result.error
+        }
+      }
+
+      const baseMsg = t('subscriptions.syncAllDone', { ok, fail }) ?? `Sync: ${ok} ok, ${fail} fail`
+      if (fail > 0) toast.error(fail > 0 && firstError ? `${baseMsg} (${firstError})` : baseMsg)
+      else toast.success(baseMsg)
+    } finally {
+      setSyncBusyAll(false)
+    }
+  }, [syncBusyAll, syncOne, t, toast])
+
+  useEffect(() => {
+    if (!calendarAutoSyncAll) {
+      lastSyncSignatureRef.current = syncSignature
+      return
+    }
+    if (syncBusyAll) return
+    if (lastSyncSignatureRef.current === syncSignature) return
+    lastSyncSignatureRef.current = syncSignature
+    void syncAll(false)
+  }, [calendarAutoSyncAll, syncAll, syncBusyAll, syncSignature])
 
   const categories = useMemo(() => {
     return language === 'es'
@@ -424,6 +648,15 @@ export function SubscriptionsView() {
           <ImportExport items={state.subscriptions} onImport={setSubscriptions} />
           <button
             type="button"
+            className={`rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-60`}
+            disabled={state.subscriptions.length === 0 || syncBusyAll}
+            onClick={() => syncAll(true)}
+            title={t('subscriptions.syncAll') ?? 'Sincronizar todas'}
+          >
+            {syncBusyAll ? (t('subscriptions.syncing') ?? 'Sincronizando…') : (t('subscriptions.syncAll') ?? 'Sync todas')}
+          </button>
+          <button
+            type="button"
             className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
             onClick={openCreateModal}
           >
@@ -618,7 +851,7 @@ export function SubscriptionsView() {
                 <th className="sticky top-0 z-10 w-24 border-b border-slate-200 bg-white py-1.5 dark:border-slate-800 dark:bg-slate-900">
                   <SortHeaderButton column="category" label={t('subscriptions.columnCategory') ?? 'Categoría'} />
                 </th>
-                <th className="sticky top-0 z-10 w-28 border-b border-slate-200 bg-white py-1.5 dark:border-slate-800 dark:bg-slate-900">
+                <th className="sticky top-0 z-10 w-24 border-b border-slate-200 bg-white py-1.5 dark:border-slate-800 dark:bg-slate-900">
                   <span className="block w-full text-center text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">{t('subscriptions.columnActions') ?? 'Acciones'}</span>
                 </th>
               </tr>
@@ -668,37 +901,9 @@ export function SubscriptionsView() {
                         <div className="flex flex-wrap justify-center gap-2">
                           <button
                             type="button"
-                            aria-label={t('subscriptions.addToCalendar') ?? 'Añadir a Calendar'}
-                            title={t('subscriptions.addToCalendar') ?? 'Añadir a Calendar'}
-                            className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500"
-                            onClick={() => openCalendarDraft(s)}
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="M8 3v3" />
-                              <path d="M16 3v3" />
-                              <path d="M4 7h16" />
-                              <path d="M6 11h4" />
-                              <path d="M6 15h4" />
-                              <path d="M14 11h4" />
-                              <path d="M14 15h4" />
-                              <path d="M5 5h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
-                            </svg>
-                            <span className="sr-only">{t('subscriptions.addToCalendar') ?? 'Añadir a Calendar'}</span>
-                          </button>
-                          <button
-                            type="button"
                             aria-label={t('common.edit') ?? 'Editar'}
                             title={t('common.edit') ?? 'Editar'}
-                            className="inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-1 text-[11px] font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                            className="inline-flex items-center justify-center rounded-md bg-amber-600/80 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-500/80"
                             onClick={() => loadForEdit(s)}
                           >
                             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

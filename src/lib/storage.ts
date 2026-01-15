@@ -8,6 +8,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   language: 'es',
   currencyDisplayMode: 'original',
   baseCurrency: 'USD',
+  calendarAutoSyncAll: false,
+  calendarUseDedicatedCalendar: false,
 }
 
 function normalizeState(input: Partial<AppState> | null | undefined): AppState {
@@ -16,6 +18,9 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   const language = rawSettings?.language === 'en' ? 'en' : 'es'
   const display = rawSettings?.currencyDisplayMode === 'convertToBase' ? 'convertToBase' : 'original'
   const baseCurrency = String(rawSettings?.baseCurrency ?? DEFAULT_SETTINGS.baseCurrency).trim().toUpperCase() || DEFAULT_SETTINGS.baseCurrency
+  const calendarAutoSyncAll = Boolean(rawSettings?.calendarAutoSyncAll ?? DEFAULT_SETTINGS.calendarAutoSyncAll)
+  const calendarUseDedicatedCalendar = Boolean(rawSettings?.calendarUseDedicatedCalendar ?? DEFAULT_SETTINGS.calendarUseDedicatedCalendar)
+  const calendarSubscriptionsCalendarId = String(rawSettings?.calendarSubscriptionsCalendarId ?? '').trim() || undefined
   return {
     subscriptions,
     settings: {
@@ -26,6 +31,9 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
       language,
       currencyDisplayMode: display,
       baseCurrency,
+      calendarAutoSyncAll,
+      calendarUseDedicatedCalendar,
+      calendarSubscriptionsCalendarId,
     },
   }
 }

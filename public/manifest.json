@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Subly",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Subscription manager in a Chrome Side Panel for Google Calendar.",
   "icons": {
     "16": "icon-16.png",
@@ -18,8 +18,12 @@
       "128": "icon-128.png"
     }
   },
-  "permissions": ["sidePanel", "storage", "alarms", "notifications"],
-  "host_permissions": ["https://calendar.google.com/*"],
+  "permissions": ["sidePanel", "storage", "alarms", "notifications", "identity"],
+  "host_permissions": ["https://calendar.google.com/*", "https://www.googleapis.com/*", "https://api.exchangerate.host/*"],
+  "oauth2": {
+    "client_id": "297517817732-ji5a0of4i995otdrtoajn9cftfih20fb.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/calendar"]
+  },
   "background": {
     "service_worker": "ext-background.js",
     "type": "module"

@@ -16,6 +16,15 @@ export default defineConfig({
       input: {
         sidepanel: resolve(__dirname, 'sidepanel.html'),
       },
+      output: {
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: (assetInfo) => {
+          const name = assetInfo.name ?? ''
+          if (name.endsWith('.css')) return 'assets/[name].css'
+          return 'assets/[name]-[hash].[ext]'
+        },
+      },
     },
   },
 })

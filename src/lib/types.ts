@@ -30,6 +30,14 @@ export type Subscription = {
   currency: string
   period: Period
   startDate: string // YYYY-MM-DD
+
+  // Google Calendar sync (optional)
+  calendar?: {
+    calendarId: string
+    eventId?: string
+    syncedAt?: string // ISO string
+    lastError?: string
+  }
 }
 
 export type AppSettings = {
@@ -38,6 +46,15 @@ export type AppSettings = {
   language: 'es' | 'en'
   currencyDisplayMode: 'original' | 'convertToBase'
   baseCurrency: string
+
+  // When enabled, changes in subscriptions trigger a best-effort sync.
+  // Note: syncing still requires OAuth authorization.
+  calendarAutoSyncAll?: boolean
+
+  // When enabled, subscription events are published to a dedicated calendar
+  // so they can be filtered in Google Calendar.
+  calendarUseDedicatedCalendar?: boolean
+  calendarSubscriptionsCalendarId?: string
 }
 
 export type AppState = {

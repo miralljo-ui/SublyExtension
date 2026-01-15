@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { RouterProvider, createHashRouter } from 'react-router-dom'
 import { routes } from './routes'
 import { StoreProvider } from './store'
+import { ToastProvider } from './components/Toast'
 import { useI18n } from './lib/i18n'
 import './styles.css'
 
@@ -16,9 +17,11 @@ function LoadingFallback() {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <StoreProvider>
-      <Suspense fallback={<LoadingFallback />}>
-        <RouterProvider router={router} />
-      </Suspense>
+      <ToastProvider>
+        <Suspense fallback={<LoadingFallback />}>
+          <RouterProvider router={router} />
+        </Suspense>
+      </ToastProvider>
     </StoreProvider>
   </React.StrictMode>,
 )

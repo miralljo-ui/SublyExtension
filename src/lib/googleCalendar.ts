@@ -10,6 +10,13 @@ type CalendarEventDraft = {
   }
 }
 
+export type GoogleCalendarEventLink = {
+  calendarId: string
+  eventId: string
+  syncedAt: string
+  lastError?: string
+}
+
 function pad2(n: number) {
   return String(n).padStart(2, '0')
 }
@@ -19,6 +26,13 @@ function formatDateYYYYMMDDLocal(date: Date) {
   const m = pad2(date.getMonth() + 1)
   const d = pad2(date.getDate())
   return `${y}${m}${d}`
+}
+
+export function formatDateYMDLocal(date: Date) {
+  const y = date.getFullYear()
+  const m = pad2(date.getMonth() + 1)
+  const d = pad2(date.getDate())
+  return `${y}-${m}-${d}`
 }
 
 function buildRRule(period: Period): string {
@@ -55,4 +69,185 @@ export function buildGoogleCalendarEventEditUrl(draft: CalendarEventDraft): stri
   }
 
   return `${base}?${params.toString()}`
+}
+
+function isExtension() {
+  return typeof chrome !== 'undefined' && !!chrome.identity
+}
+
+async function getAuthToken(interactive: boolean): Promise<string> {
+  if (!isExtension()) throw new Error('Google Calendar sync requires Chrome Extension environment.')
+
+  return await new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive }, (token) => {
+      const err = chrome.runtime.lastError
+      if (err) {
+        reject(new Error(err.message || 'OAuth token error'))
+        return
+      }
+      if (!token) {
+        reject(new Error('No OAuth token received'))
+        return
+      }
+      resolve(token)
+    })
+  })
+}
+
+async function removeCachedToken(token: string): Promise<void> {
+  if (!isExtension()) return
+  await new Promise<void>((resolve) => {
+    chrome.identity.removeCachedAuthToken({ token }, () => resolve())
+  })
+}
+
+async function calendarApiRequest<T>(args: {
+  token: string
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  path: string
+  body?: unknown
+}): Promise<T> {
+  const url = `https://www.googleapis.com/calendar/v3${args.path}`
+  const res = await fetch(url, {
+    method: args.method,
+    headers: {
+      Authorization: `Bearer ${args.token}`,
+      ...(args.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: args.body ? JSON.stringify(args.body) : undefined,
+  })
+
+  if (res.status === 204) return undefined as T
+
+  const text = await res.text()
+  if (!res.ok) {
+    const msg = text || `${res.status} ${res.statusText}`
+    throw new Error(msg)
+  }
+  return (text ? (JSON.parse(text) as T) : (undefined as T))
+}
+
+export type UpsertRecurringAllDayEventInput = {
+  calendarId?: string
+  eventId?: string
+  summary: string
+  description?: string
+  startDateYmd: string // YYYY-MM-DD (local)
+  period: Period
+  token?: string
+  interactive?: boolean
+}
+
+export async function upsertRecurringAllDayEvent(input: UpsertRecurringAllDayEventInput): Promise<GoogleCalendarEventLink> {
+  const calendarId = input.calendarId ?? 'primary'
+  const interactive = input.interactive ?? true
+  let token = input.token
+
+  if (!token) token = await getAuthToken(interactive)
+
+  const [y, m, d] = input.startDateYmd.split('-').map(Number)
+  const start = new Date(y, (m ?? 1) - 1, d ?? 1)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+
+  const body = {
+    summary: input.summary,
+    description: input.description,
+    start: { date: input.startDateYmd },
+    end: { date: formatDateYMDLocal(end) },
+    recurrence: [buildRRule(input.period)],
+  }
+
+  try {
+    if (input.eventId) {
+      const updated = await calendarApiRequest<{ id: string }>({
+        token,
+        method: 'PATCH',
+        path: `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.eventId)}`,
+        body,
+      })
+      return { calendarId, eventId: updated.id, syncedAt: new Date().toISOString() }
+    }
+
+    const created = await calendarApiRequest<{ id: string }>({
+      token,
+      method: 'POST',
+      path: `/calendars/${encodeURIComponent(calendarId)}/events`,
+      body,
+    })
+    return { calendarId, eventId: created.id, syncedAt: new Date().toISOString() }
+  } catch (e) {
+    // If token expired/invalid, purge it so the next interactive call can recover.
+    await removeCachedToken(token)
+    throw e
+  }
+}
+
+export async function deleteCalendarEvent(args: { calendarId?: string; eventId: string; token?: string; interactive?: boolean }): Promise<void> {
+  const calendarId = args.calendarId ?? 'primary'
+  const interactive = args.interactive ?? true
+  const token = args.token ?? await getAuthToken(interactive)
+  try {
+    await calendarApiRequest<void>({
+      token,
+      method: 'DELETE',
+      path: `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(args.eventId)}`,
+    })
+  } catch (e) {
+    await removeCachedToken(token)
+    throw e
+  }
+}
+
+type CalendarListItem = {
+  id: string
+  summary?: string
+}
+
+type CalendarListResponse = {
+  items?: CalendarListItem[]
+}
+
+const SUBSCRIPTIONS_CALENDAR_SUMMARY = 'Subly Subscriptions'
+
+export async function ensureSubscriptionsCalendar(args?: { token?: string; interactive?: boolean; summary?: string }): Promise<string> {
+  const interactive = args?.interactive ?? true
+  const desiredSummary = String(args?.summary || SUBSCRIPTIONS_CALENDAR_SUMMARY).trim() || SUBSCRIPTIONS_CALENDAR_SUMMARY
+  let token = args?.token
+  if (!token) token = await getAuthToken(interactive)
+
+  try {
+    const list = await calendarApiRequest<CalendarListResponse>({
+      token,
+      method: 'GET',
+      path: `/users/me/calendarList?minAccessRole=writer`,
+    })
+
+    const existing = (list.items ?? []).find(it => String(it.summary || '').trim().toLowerCase() === desiredSummary.toLowerCase())
+    if (existing?.id) return existing.id
+
+    const created = await calendarApiRequest<{ id: string }>({
+      token,
+      method: 'POST',
+      path: `/calendars`,
+      body: { summary: desiredSummary },
+    })
+
+    // Best-effort: ensure it appears in the user's calendar list.
+    try {
+      await calendarApiRequest<void>({
+        token,
+        method: 'POST',
+        path: `/users/me/calendarList`,
+        body: { id: created.id },
+      })
+    } catch {
+      // Ignore; owned calendars typically appear automatically.
+    }
+
+    return created.id
+  } catch (e) {
+    await removeCachedToken(token)
+    throw e
+  }
 }
