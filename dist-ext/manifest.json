@@ -18,7 +18,7 @@
       "128": "icon-128.png"
     }
   },
-  "permissions": ["sidePanel", "storage", "alarms", "notifications", "identity"],
+  "permissions": ["sidePanel", "storage", "identity"],
   "host_permissions": [
     "https://calendar.google.com/*",
     "https://www.googleapis.com/*",

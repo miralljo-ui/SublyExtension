@@ -120,7 +120,7 @@ export function Dashboard() {
 
   const insightsByCurrency = useMemo(() => {
     const now = new Date()
-    const windowDays = Math.max(0, Math.min(30, Math.floor(state.settings.notifyDaysBefore ?? 7)))
+    const windowDays = 7
     const dueThreshold = new Date(now)
     dueThreshold.setDate(dueThreshold.getDate() + windowDays)
 
@@ -192,7 +192,7 @@ export function Dashboard() {
     }
 
     return out
-  }, [baseCurrency, displayMode, fxTick, state.settings.notifyDaysBefore, state.subscriptions, t])
+  }, [baseCurrency, displayMode, fxTick, state.subscriptions, t])
 
   const nextItems = useMemo(() => {
     const now = new Date()
@@ -470,7 +470,7 @@ export function Dashboard() {
                         {barItems.length === 0 ? (
                           <div className="text-sm text-slate-500">{t('dashboard.noData') ?? 'Sin datos.'}</div>
                         ) : (
-                          <SimpleBarChart items={barItems} formatValue={v => formatCurrency(v, cur)} />
+                          <SimpleBarChart items={barItems} colorClassName="text-indigo-500" formatValue={v => formatCurrency(v, cur)} />
                         )}
                       </div>
                     </div>
@@ -513,7 +513,7 @@ export function Dashboard() {
                         {categoryItems.length === 0 ? (
                           <div className="text-sm text-slate-500">{t('dashboard.noData') ?? 'Sin datos.'}</div>
                         ) : (
-                          <SimpleBarChart items={categoryItems} formatValue={v => formatCurrency(v, cur)} />
+                          <SimpleBarChart items={categoryItems} colorClassName="text-sky-500" formatValue={v => formatCurrency(v, cur)} />
                         )}
                       </div>
                     </div>

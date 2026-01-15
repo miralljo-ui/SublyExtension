@@ -487,10 +487,7 @@ export function SubscriptionsView() {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [baseCurrency, state.subscriptions])
 
-  const dueWindowDays = useMemo(() => {
-    const n = Number(state.settings.notifyDaysBefore)
-    return Number.isFinite(n) ? Math.max(0, Math.min(30, Math.floor(n))) : 2
-  }, [state.settings.notifyDaysBefore])
+  const dueWindowDays = 2
 
   const enriched = useMemo(() => {
     const now = new Date()
@@ -511,7 +508,7 @@ export function SubscriptionsView() {
         monthlyEqBase,
       }
     })
-  }, [baseCurrency, dueWindowDays, state.subscriptions])
+  }, [baseCurrency, state.subscriptions])
 
   const insights = useMemo(() => {
     const count = state.subscriptions.length

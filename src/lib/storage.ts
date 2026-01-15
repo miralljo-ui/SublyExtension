@@ -3,8 +3,6 @@ import type { AppSettings, AppState, Subscription } from './types'
 const KEY = 'subly:state'
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  notificationsEnabled: false,
-  notifyDaysBefore: 2,
   language: 'es',
   currencyDisplayMode: 'original',
   baseCurrency: 'USD',
@@ -28,10 +26,6 @@ export function normalizeState(input: Partial<AppState> | null | undefined): App
   return {
     subscriptions,
     settings: {
-      notificationsEnabled: Boolean(rawSettings?.notificationsEnabled ?? DEFAULT_SETTINGS.notificationsEnabled),
-      notifyDaysBefore: Number.isFinite(rawSettings?.notifyDaysBefore)
-        ? Math.max(0, Math.min(30, Math.floor(rawSettings!.notifyDaysBefore)))
-        : DEFAULT_SETTINGS.notifyDaysBefore,
       language,
       currencyDisplayMode: display,
       baseCurrency,

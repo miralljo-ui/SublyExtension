@@ -41,8 +41,6 @@ export type Subscription = {
 }
 
 export type AppSettings = {
-  notificationsEnabled: boolean
-  notifyDaysBefore: number
   language: 'es' | 'en'
   currencyDisplayMode: 'original' | 'convertToBase'
   baseCurrency: string
