@@ -8,6 +8,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   baseCurrency: 'USD',
   calendarAutoSyncAll: false,
   calendarUseDedicatedCalendar: false,
+  calendarFloatingButtonEnabled: true,
+  onboardingCompleted: false,
   driveBackupFileId: undefined,
   driveLastBackupAt: undefined,
 }
@@ -20,6 +22,8 @@ export function normalizeState(input: Partial<AppState> | null | undefined): App
   const baseCurrency = String(rawSettings?.baseCurrency ?? DEFAULT_SETTINGS.baseCurrency).trim().toUpperCase() || DEFAULT_SETTINGS.baseCurrency
   const calendarAutoSyncAll = Boolean(rawSettings?.calendarAutoSyncAll ?? DEFAULT_SETTINGS.calendarAutoSyncAll)
   const calendarUseDedicatedCalendar = Boolean(rawSettings?.calendarUseDedicatedCalendar ?? DEFAULT_SETTINGS.calendarUseDedicatedCalendar)
+  const calendarFloatingButtonEnabled = rawSettings?.calendarFloatingButtonEnabled === false ? false : true
+  const onboardingCompleted = Boolean(rawSettings?.onboardingCompleted ?? DEFAULT_SETTINGS.onboardingCompleted)
   const calendarSubscriptionsCalendarId = String(rawSettings?.calendarSubscriptionsCalendarId ?? '').trim() || undefined
   const driveBackupFileId = String(rawSettings?.driveBackupFileId ?? '').trim() || undefined
   const driveLastBackupAt = String(rawSettings?.driveLastBackupAt ?? '').trim() || undefined
@@ -31,6 +35,8 @@ export function normalizeState(input: Partial<AppState> | null | undefined): App
       baseCurrency,
       calendarAutoSyncAll,
       calendarUseDedicatedCalendar,
+      calendarFloatingButtonEnabled,
+      onboardingCompleted,
       calendarSubscriptionsCalendarId,
       driveBackupFileId,
       driveLastBackupAt,

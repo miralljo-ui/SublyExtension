@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import FaultyTerminal from './components/FaultyTerminal'
+import { OnboardingStepper } from './components/OnboardingStepper'
 import { useI18n } from './lib/i18n'
 
 function Tab({ to, label }: { to: string; label: string }) {
@@ -20,6 +21,7 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen text-slate-900 dark:text-white">
+      <OnboardingStepper />
       <div className="pointer-events-none absolute inset-0 -z-10">
         <FaultyTerminal
           className="h-full w-full"

@@ -45,6 +45,14 @@ export type AppSettings = {
   currencyDisplayMode: 'original' | 'convertToBase'
   baseCurrency: string
 
+  // Sidepanel onboarding
+  onboardingCompleted?: boolean
+
+  // Content-script UI
+  // When enabled, the extension injects a small floating button on Google Calendar
+  // to open the side panel.
+  calendarFloatingButtonEnabled?: boolean
+
   // When enabled, changes in subscriptions trigger a best-effort sync.
   // Note: syncing still requires OAuth authorization.
   calendarAutoSyncAll?: boolean

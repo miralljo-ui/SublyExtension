@@ -6,6 +6,7 @@ type Store = {
   state: AppState
   setSubscriptions: (subs: Subscription[]) => void
   setSettings: (settings: AppSettings) => void
+  ready: boolean
 }
 
 const StoreContext = createContext<Store | null>(null)
@@ -36,7 +37,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     state,
     setSubscriptions: (subs) => setState(prev => ({ ...prev, subscriptions: subs })),
     setSettings: (settings) => setState(prev => ({ ...prev, settings })),
-  }), [state])
+    ready,
+  }), [ready, state])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }
