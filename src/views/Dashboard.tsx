@@ -4,6 +4,7 @@ import { nextRenewalDate } from '../lib/storage'
 import { SimpleBarChart, SimpleLineChart, SimplePieChart } from '../components/SimpleCharts'
 import { exportElementToPng, exportRowsToCsv } from '../lib/export'
 import { convertCurrencySync, formatCurrency, getRates } from '../lib/money'
+import GradientText from '../components/ui/GradientText'
 import { useStore } from '../store'
 import { useI18n } from '../lib/i18n'
 
@@ -306,7 +307,9 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.monthlySpendTitle') ?? 'Gasto mensual (equivalente)'}</div>
+        <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
+          <GradientText>{t('dashboard.monthlySpendTitle') ?? 'Gasto mensual (equivalente)'}</GradientText>
+        </div>
         <div className="mt-2 flex flex-wrap gap-2">
           {totals.length === 0 ? (
             <div className="text-sm text-slate-500">{t('dashboard.noSubscriptionsYet') ?? 'Sin suscripciones aún.'}</div>
@@ -332,7 +335,9 @@ export function Dashboard() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.upcomingRenewalsTitle') ?? 'Próximas renovaciones'}</div>
+        <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
+          <GradientText>{t('dashboard.upcomingRenewalsTitle') ?? 'Próximas renovaciones'}</GradientText>
+        </div>
         <div className="mt-2 space-y-2">
           {nextItems.length === 0 ? (
             <div className="text-sm text-slate-500">{t('dashboard.noDataYet') ?? 'No hay datos todavía.'}</div>
@@ -348,7 +353,9 @@ export function Dashboard() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.chartsTitle') ?? 'Gráficos'}</div>
+        <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
+          <GradientText>{t('dashboard.chartsTitle') ?? 'Gráficos'}</GradientText>
+        </div>
         {state.subscriptions.length === 0 ? (
           <div className="mt-2 text-sm text-slate-500">{t('dashboard.addSubsToSeeCharts') ?? 'Añade suscripciones para ver gráficos.'}</div>
         ) : (
@@ -390,7 +397,9 @@ export function Dashboard() {
                   <div className="mt-3 space-y-3">
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.projectionTitle') ?? 'Proyección mensual (últimos 12 meses)'}</div>
+                        <div className="text-base font-bold text-slate-700 dark:text-slate-200">
+                          <GradientText>{t('dashboard.projectionTitle') ?? 'Proyección mensual (últimos 12 meses)'}</GradientText>
+                        </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -434,7 +443,9 @@ export function Dashboard() {
 
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.annualTopTitle') ?? 'Top gasto anual (estimado)'}</div>
+                        <div className="text-base font-bold text-slate-700 dark:text-slate-200">
+                          <GradientText>{t('dashboard.annualTopTitle') ?? 'Top gasto anual (estimado)'}</GradientText>
+                        </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -477,7 +488,9 @@ export function Dashboard() {
 
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.monthlyByCategoryTitle') ?? 'Gasto mensual por categoría (equivalente)'}</div>
+                        <div className="text-base font-bold text-slate-700 dark:text-slate-200">
+                          <GradientText>{t('dashboard.monthlyByCategoryTitle') ?? 'Gasto mensual por categoría (equivalente)'}</GradientText>
+                        </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -520,7 +533,9 @@ export function Dashboard() {
 
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.distributionTitle') ?? 'Distribución (gasto mensual equivalente)'}</div>
+                        <div className="text-base font-bold text-slate-700 dark:text-slate-200">
+                          <GradientText>{t('dashboard.distributionTitle') ?? 'Distribución (gasto mensual equivalente)'}</GradientText>
+                        </div>
                         <div className="flex gap-2">
                           <button
                             type="button"

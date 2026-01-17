@@ -6,9 +6,12 @@ import { deleteCalendarEvent, ensureSubscriptionsCalendar, formatDateYMDLocal, u
 import { convertCurrencySync, formatCurrency } from '../lib/money'
 import { ImportExport } from '../components/ImportExport'
 import { useToast } from '../components/Toast'
+import GradientText from '../components/ui/GradientText'
 import { useStore } from '../store'
 import { useI18n } from '../lib/i18n'
 import { driveSaveAppStateJson } from '../lib/googleDrive'
+
+const SUBSCRIPTIONS_TITLE_GRADIENT_COLORS = ['#22C55E', '#06B6D4', '#3B82F6']
 
 function localeForLanguage(language: 'es' | 'en') {
   return language === 'es' ? 'es-ES' : 'en-US'
@@ -47,6 +50,7 @@ function computeSyncSignature(subscriptions: Subscription[]) {
       currency: s.currency,
       period: s.period,
       startDate: s.startDate,
+      reminder: s.reminder ?? null,
     })),
   )
 }
@@ -138,6 +142,10 @@ export function SubscriptionsView() {
   const [period, setPeriod] = useState<Period>('monthly')
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10))
 
+  const [useCustomReminder, setUseCustomReminder] = useState(false)
+  const [customReminderDaysBefore, setCustomReminderDaysBefore] = useState(1)
+  const [customReminderMethod, setCustomReminderMethod] = useState<'popup' | 'email'>('popup')
+
   const canSubmit = useMemo(() => {
     const trimmedName = name.trim()
     const trimmedPrice = price.trim()
@@ -158,6 +166,10 @@ export function SubscriptionsView() {
     setCurrency('USD')
     setPeriod('monthly')
     setStartDate(new Date().toISOString().slice(0, 10))
+
+    setUseCustomReminder(false)
+    setCustomReminderDaysBefore(Math.max(0, Math.trunc(Number(settingsRef.current.calendarReminderDaysBefore ?? 1))))
+    setCustomReminderMethod(settingsRef.current.calendarReminderMethod === 'email' ? 'email' : 'popup')
   }
 
   function closeModal() {
@@ -180,6 +192,17 @@ export function SubscriptionsView() {
     setCurrency(allowed ? normalized : 'USD')
     setPeriod(s.period)
     setStartDate(s.startDate)
+
+    const enabled = Boolean(s.reminder?.enabled)
+    setUseCustomReminder(enabled)
+    if (enabled) {
+      setCustomReminderDaysBefore(Math.max(0, Math.min(365, Math.trunc(Number(s.reminder?.daysBefore ?? 1)))))
+      setCustomReminderMethod(s.reminder?.method === 'email' ? 'email' : 'popup')
+    } else {
+      setCustomReminderDaysBefore(Math.max(0, Math.trunc(Number(settingsRef.current.calendarReminderDaysBefore ?? 1))))
+      setCustomReminderMethod(settingsRef.current.calendarReminderMethod === 'email' ? 'email' : 'popup')
+    }
+
     setIsModalOpen(true)
   }
 
@@ -197,6 +220,15 @@ export function SubscriptionsView() {
 
     const isEdit = Boolean(editingId)
     const existing = editingId ? state.subscriptions.find(s => s.id === editingId) : undefined
+
+    const reminder: Subscription['reminder'] = useCustomReminder
+      ? {
+        enabled: true,
+        daysBefore: Math.max(0, Math.min(365, Math.trunc(Number(customReminderDaysBefore)))),
+        method: customReminderMethod === 'email' ? 'email' : 'popup',
+      }
+      : undefined
+
     const next: Subscription = {
       ...existing,
       id: editingId ?? createId(),
@@ -206,6 +238,7 @@ export function SubscriptionsView() {
       currency,
       period,
       startDate,
+      reminder,
     }
 
     const list = state.subscriptions.slice()
@@ -355,15 +388,31 @@ export function SubscriptionsView() {
         return typeof s === 'number' ? s : undefined
       }
 
-      const buildUpsertArgs = (calendarId: string, eventId?: string) => ({
-        calendarId,
-        eventId,
-        summary: `${s.name} · ${t('subscriptions.renewal') ?? 'Renovación'}`,
-        description: detailsLines.join('\n'),
-        startDateYmd: startYmd,
-        period: s.period,
-        interactive,
-      })
+      const buildUpsertArgs = (calendarId: string, eventId?: string) => {
+        const reminderMethod: 'popup' | 'email' = s.reminder?.enabled
+          ? (s.reminder?.method === 'email' ? 'email' : 'popup')
+          : (settingsRef.current.calendarReminderMethod === 'email' ? 'email' : 'popup')
+
+        const reminderMinutes = (() => {
+          const useCustom = Boolean(s.reminder?.enabled)
+          const days = useCustom
+            ? Math.max(0, Math.trunc(Number(s.reminder?.daysBefore ?? 1)))
+            : Math.max(0, Math.trunc(Number(settingsRef.current.calendarReminderDaysBefore ?? 1)))
+          return (days * 24 * 60)
+        })()
+
+        return {
+          calendarId,
+          eventId,
+          summary: `${s.name} · ${t('subscriptions.renewal') ?? 'Renovación'}`,
+          description: detailsLines.join('\n'),
+          startDateYmd: startYmd,
+          period: s.period,
+          reminderMinutes,
+          reminderMethod,
+          interactive,
+        }
+      }
 
       let link: Awaited<ReturnType<typeof upsertRecurringAllDayEvent>>
       try {
@@ -706,8 +755,10 @@ export function SubscriptionsView() {
     <div className="space-y-4">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('subscriptions.listTitle') ?? 'Listado'}</div>
-          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('subscriptions.subtitle') ?? ''}</div>
+          <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
+            <GradientText colors={SUBSCRIPTIONS_TITLE_GRADIENT_COLORS}>{t('subscriptions.listTitle') ?? 'Listado'}</GradientText>
+          </div>
+          <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('subscriptions.subtitle') ?? ''}</div>
         </div>
         <div className="flex items-center gap-2">
           <ImportExport items={state.subscriptions} onImport={setSubscriptions} />
@@ -772,7 +823,9 @@ export function SubscriptionsView() {
       <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t('subscriptions.insightsTitle') ?? 'Resumen'}</div>
+            <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
+              <GradientText colors={SUBSCRIPTIONS_TITLE_GRADIENT_COLORS}>{t('subscriptions.insightsTitle') ?? 'Resumen'}</GradientText>
+            </div>
             <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('subscriptions.insightsHint', { currency: baseCurrency }) ?? ''}</div>
           </div>
           <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('subscriptions.insightsDueWindow', { days: dueWindowDays }) ?? ''}</div>
@@ -1048,8 +1101,12 @@ export function SubscriptionsView() {
           <div className="absolute inset-0 bg-slate-950/50" onClick={closeModal} />
           <div className="relative mx-auto w-full max-w-3xl px-4 py-6">
             <div role="dialog" aria-modal="true" className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-              <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-                {editing ? (t('subscriptions.editSubscription') ?? 'Editar suscripción') : (t('subscriptions.addSubscriptionTitle') ?? 'Añadir suscripción')}
+              <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
+                <GradientText colors={SUBSCRIPTIONS_TITLE_GRADIENT_COLORS}>
+                  {editing
+                    ? (t('subscriptions.editSubscription') ?? 'Editar suscripción')
+                    : (t('subscriptions.addSubscriptionTitle') ?? 'Añadir suscripción')}
+                </GradientText>
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1122,6 +1179,82 @@ export function SubscriptionsView() {
                   <div className="mb-1 font-semibold">{t('subscriptions.startDate') ?? 'Fecha inicio'}</div>
                   <input type="date" className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </label>
+              </div>
+
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                <div className="text-base font-bold text-slate-700 dark:text-slate-200">
+                  <GradientText colors={SUBSCRIPTIONS_TITLE_GRADIENT_COLORS}>{t('subscriptions.remindersTitle') ?? 'Avisos de renovación'}</GradientText>
+                </div>
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {(() => {
+                    const days = useCustomReminder
+                      ? Math.max(0, Math.min(365, Math.trunc(Number(customReminderDaysBefore))))
+                      : Math.max(0, Math.trunc(Number(state.settings.calendarReminderDaysBefore ?? 1)))
+
+                    const method: 'popup' | 'email' = useCustomReminder
+                      ? (customReminderMethod === 'email' ? 'email' : 'popup')
+                      : (state.settings.calendarReminderMethod === 'email' ? 'email' : 'popup')
+
+                    if (days <= 0) {
+                      return t('subscriptions.reminderSummaryNone') ?? 'No recibirás notificaciones antes de la renovación.'
+                    }
+
+                    if (method === 'email') {
+                      return (
+                        (days === 1
+                          ? t('subscriptions.reminderSummaryEmailOne')
+                          : t('subscriptions.reminderSummaryEmailMany', { days })) ??
+                        `Recibirás un email ${days} días antes de la renovación.`
+                      )
+                    }
+
+                    return (
+                      (days === 1
+                        ? t('subscriptions.reminderSummaryNotificationOne')
+                        : t('subscriptions.reminderSummaryNotificationMany', { days })) ??
+                      `Recibirás una notificación ${days} días antes de la renovación.`
+                    )
+                  })()}
+                </div>
+
+                <label className="mt-3 flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={useCustomReminder}
+                    onChange={e => setUseCustomReminder(e.target.checked)}
+                  />
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {t('subscriptions.reminderUseCustom') ?? 'Usar recordatorio personalizado'}
+                  </span>
+                </label>
+
+                {useCustomReminder ? (
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-xs text-slate-600 dark:text-slate-300">
+                      <div className="mb-1 font-semibold text-slate-700 dark:text-slate-200">{t('subscriptions.reminderDaysBefore') ?? 'Días antes'}</div>
+                      <input
+                        type="number"
+                        min={0}
+                        max={365}
+                        value={customReminderDaysBefore}
+                        onChange={e => setCustomReminderDaysBefore(Math.max(0, Math.min(365, Math.trunc(Number(e.target.value)))))}
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                      />
+                    </label>
+                    <label className="text-xs text-slate-600 dark:text-slate-300">
+                      <div className="mb-1 font-semibold text-slate-700 dark:text-slate-200">{t('subscriptions.reminderMethodLabel') ?? 'Tipo'}</div>
+                      <select
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                        value={customReminderMethod}
+                        onChange={e => setCustomReminderMethod(e.target.value === 'email' ? 'email' : 'popup')}
+                      >
+                        <option value="popup">{t('subscriptions.reminderMethodPopup') ?? 'Notificación'}</option>
+                        <option value="email">{t('subscriptions.reminderMethodEmail') ?? 'Email'}</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">

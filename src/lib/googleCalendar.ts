@@ -148,8 +148,22 @@ export type UpsertRecurringAllDayEventInput = {
   description?: string
   startDateYmd: string // YYYY-MM-DD (local)
   period: Period
+  // Minutes before event start (all-day event start is local midnight).
+  // When provided, Subly sets a popup reminder override for the event.
+  reminderMinutes?: number
+  reminderMethod?: 'popup' | 'email'
   token?: string
   interactive?: boolean
+}
+
+function clampReminderMinutes(v: number): number {
+  // Google Calendar UI typically supports up to 4 weeks.
+  const max = 40320
+  if (!Number.isFinite(v)) return 0
+  const i = Math.trunc(v)
+  if (i < 0) return 0
+  if (i > max) return max
+  return i
 }
 
 export async function upsertRecurringAllDayEvent(input: UpsertRecurringAllDayEventInput): Promise<GoogleCalendarEventLink> {
@@ -164,12 +178,22 @@ export async function upsertRecurringAllDayEvent(input: UpsertRecurringAllDayEve
   const end = new Date(start)
   end.setDate(end.getDate() + 1)
 
+  const reminderMinutes = typeof input.reminderMinutes === 'number' ? clampReminderMinutes(input.reminderMinutes) : undefined
+  const reminderMethod = input.reminderMethod === 'email' ? 'email' : 'popup'
+
   const body = {
     summary: input.summary,
     description: input.description,
     start: { date: input.startDateYmd },
     end: { date: formatDateYMDLocal(end) },
     recurrence: [buildRRule(input.period)],
+    ...(reminderMinutes === undefined
+      ? {}
+      : {
+        reminders: reminderMinutes > 0
+          ? { useDefault: false, overrides: [{ method: reminderMethod, minutes: reminderMinutes }] }
+          : { useDefault: false, overrides: [] as { method: 'popup' | 'email'; minutes: number }[] },
+      }),
   }
 
   try {

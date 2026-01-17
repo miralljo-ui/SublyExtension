@@ -39,7 +39,7 @@ function SettingsCard({
     blueGradient:
       'bg-slate-950 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.28),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(167,139,250,0.22),transparent_55%)]',
     teal: 'bg-gradient-to-br from-teal-950/80 via-slate-900 to-teal-950/30',
-    amber: 'bg-gradient-to-br from-amber-950/95 via-slate-950/75 to-amber-950/15',
+    amber: 'bg-gradient-to-br from-amber-950/95 via-slate-800/80 to-amber-950/15',
     violet: 'bg-gradient-to-br from-violet-950/80 via-slate-900 to-violet-950/30',
     fuchsia: 'bg-gradient-to-br from-fuchsia-950/70 via-slate-900 to-fuchsia-950/30',
     indigo: 'bg-gradient-to-br from-indigo-950/80 via-slate-900 to-indigo-950/30',
@@ -191,6 +191,21 @@ export function Settings() {
     })
   }
 
+  function setCalendarReminderDaysBefore(days: number) {
+    const d = Number.isFinite(days) ? Math.trunc(days) : 0
+    setSettings({
+      ...state.settings,
+      calendarReminderDaysBefore: Math.max(0, Math.min(365, d)),
+    })
+  }
+
+  function setCalendarReminderMethod(method: 'popup' | 'email') {
+    setSettings({
+      ...state.settings,
+      calendarReminderMethod: method === 'email' ? 'email' : 'popup',
+    })
+  }
+
   function openOnboarding() {
     setSettings({
       ...state.settings,
@@ -209,6 +224,8 @@ export function Settings() {
         calendarAutoSyncAll: Boolean(state.settings.calendarAutoSyncAll),
         calendarUseDedicatedCalendar: Boolean(state.settings.calendarUseDedicatedCalendar),
         calendarFloatingButtonEnabled: state.settings.calendarFloatingButtonEnabled !== false,
+        calendarReminderDaysBefore: Math.max(0, Math.trunc(Number(state.settings.calendarReminderDaysBefore ?? 1))),
+        calendarReminderMethod: (state.settings.calendarReminderMethod === 'email' ? 'email' : 'popup'),
         driveBackupLinked: Boolean(state.settings.driveBackupFileId),
         driveLastBackupAt: state.settings.driveLastBackupAt || null,
       },
@@ -458,6 +475,35 @@ export function Settings() {
                 <div className="mt-1 text-xs text-slate-400">{t('settings.calendarAutoSyncAllHint') ?? 'Al guardar cambios en Suscripciones, se intentará sincronizar automáticamente (si ya diste permiso).'}</div>
               </div>
             </label>
+
+            <div className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
+              <div className="text-sm font-semibold text-slate-200">{t('settings.calendarReminderTitle') ?? 'Notificación por defecto'}</div>
+              <div className="mt-1 text-xs text-slate-400">{t('settings.calendarReminderHint') ?? 'Se aplica al sincronizar (crear/actualizar) eventos de suscripciones. 0 días desactiva recordatorios.'}</div>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="text-xs text-slate-300">
+                  <div className="mb-1 font-semibold text-slate-200">{t('settings.calendarReminderDaysLabel') ?? 'Días antes'}</div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={365}
+                    value={Math.max(0, Math.trunc(Number(state.settings.calendarReminderDaysBefore ?? 1)))}
+                    onChange={e => setCalendarReminderDaysBefore(Number(e.target.value))}
+                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                  />
+                </label>
+                <label className="text-xs text-slate-300">
+                  <div className="mb-1 font-semibold text-slate-200">{t('settings.calendarReminderMethodLabel') ?? 'Tipo'}</div>
+                  <select
+                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                    value={(state.settings.calendarReminderMethod === 'email' ? 'email' : 'popup')}
+                    onChange={e => setCalendarReminderMethod(e.target.value === 'email' ? 'email' : 'popup')}
+                  >
+                    <option value="popup">{t('settings.calendarReminderMethodPopup') ?? 'Notificación'}</option>
+                    <option value="email">{t('settings.calendarReminderMethodEmail') ?? 'Email'}</option>
+                  </select>
+                </label>
+              </div>
+            </div>
 
             <a
               className="inline-flex rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"

@@ -31,6 +31,13 @@ export type Subscription = {
   period: Period
   startDate: string // YYYY-MM-DD
 
+  // Optional per-subscription Calendar reminder override.
+  reminder?: {
+    enabled?: boolean
+    daysBefore?: number
+    method?: 'popup' | 'email'
+  }
+
   // Google Calendar sync (optional)
   calendar?: {
     calendarId: string
@@ -61,6 +68,12 @@ export type AppSettings = {
   // so they can be filtered in Google Calendar.
   calendarUseDedicatedCalendar?: boolean
   calendarSubscriptionsCalendarId?: string
+
+  // Default reminders for synced subscription events.
+  // Stored as days/hours before the all-day event start.
+  // (e.g. 1 day, 0 hours => 24h before)
+  calendarReminderDaysBefore?: number
+  calendarReminderMethod?: 'popup' | 'email'
 
   // Google Drive (appDataFolder) backup
   driveBackupFileId?: string

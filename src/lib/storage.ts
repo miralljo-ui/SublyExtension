@@ -9,6 +9,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   calendarAutoSyncAll: false,
   calendarUseDedicatedCalendar: false,
   calendarFloatingButtonEnabled: true,
+  calendarReminderDaysBefore: 1,
+  calendarReminderMethod: 'popup',
   onboardingCompleted: false,
   driveBackupFileId: undefined,
   driveLastBackupAt: undefined,
@@ -23,6 +25,25 @@ export function normalizeState(input: Partial<AppState> | null | undefined): App
   const calendarAutoSyncAll = Boolean(rawSettings?.calendarAutoSyncAll ?? DEFAULT_SETTINGS.calendarAutoSyncAll)
   const calendarUseDedicatedCalendar = Boolean(rawSettings?.calendarUseDedicatedCalendar ?? DEFAULT_SETTINGS.calendarUseDedicatedCalendar)
   const calendarFloatingButtonEnabled = rawSettings?.calendarFloatingButtonEnabled === false ? false : true
+
+  const toIntInRange = (v: unknown, fallback: number, min: number, max: number) => {
+    const n = typeof v === 'number' ? v : Number(v)
+    if (!Number.isFinite(n)) return fallback
+    const i = Math.trunc(n)
+    if (i < min) return min
+    if (i > max) return max
+    return i
+  }
+
+  const calendarReminderDaysBefore = toIntInRange(
+    rawSettings?.calendarReminderDaysBefore,
+    DEFAULT_SETTINGS.calendarReminderDaysBefore ?? 1,
+    0,
+    365,
+  )
+
+  const calendarReminderMethod = rawSettings?.calendarReminderMethod === 'email' ? 'email' : 'popup'
+
   const onboardingCompleted = Boolean(rawSettings?.onboardingCompleted ?? DEFAULT_SETTINGS.onboardingCompleted)
   const calendarSubscriptionsCalendarId = String(rawSettings?.calendarSubscriptionsCalendarId ?? '').trim() || undefined
   const driveBackupFileId = String(rawSettings?.driveBackupFileId ?? '').trim() || undefined
@@ -36,6 +57,8 @@ export function normalizeState(input: Partial<AppState> | null | undefined): App
       calendarAutoSyncAll,
       calendarUseDedicatedCalendar,
       calendarFloatingButtonEnabled,
+      calendarReminderDaysBefore,
+      calendarReminderMethod,
       onboardingCompleted,
       calendarSubscriptionsCalendarId,
       driveBackupFileId,
