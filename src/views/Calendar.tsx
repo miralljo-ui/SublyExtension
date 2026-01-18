@@ -180,7 +180,7 @@ export function Calendar() {
   const syncAll = async (interactive: boolean) => {
     if (syncBusy) return
     if (subscriptionsRef.current.length === 0) {
-      toast.info(t('subscriptions.emptyHint') ?? 'No hay suscripciones aún.')
+      toast.info(t('calendar.emptyHint') ?? 'Añade suscripciones para ver tu agenda.')
       return
     }
 
@@ -362,7 +362,7 @@ export function Calendar() {
               className="inline-flex rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void syncAll(true)}
               disabled={syncBusy || state.subscriptions.length === 0}
-              title={state.subscriptions.length === 0 ? (t('subscriptions.emptyHint') ?? 'No hay suscripciones aún.') : undefined}
+              title={state.subscriptions.length === 0 ? (t('calendar.emptyHint') ?? 'Añade suscripciones para ver tu agenda.') : undefined}
             >
               {syncBusy ? (t('subscriptions.syncing') ?? 'Syncing…') : (t('subscriptions.syncAll') ?? 'Sync all')}
             </button>
@@ -422,7 +422,7 @@ export function Calendar() {
         {agendaGroups.length === 0 ? (
           <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">
             {state.subscriptions.length === 0
-              ? (t('subscriptions.emptyHint') ?? 'Añade suscripciones para ver tu agenda.')
+              ? (t('calendar.emptyHint') ?? 'Añade suscripciones para ver tu agenda.')
               : (t('calendar.noUpcoming', { days: windowDays }) ?? `No renewals in the next ${windowDays} days.`)}
           </div>
         ) : (
