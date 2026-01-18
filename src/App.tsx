@@ -1,23 +1,22 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import FaultyTerminal from './components/FaultyTerminal'
 import { OnboardingStepper } from './components/OnboardingStepper'
+import PillNav from './components/PillNav'
 import { useI18n } from './lib/i18n'
-
-function Tab({ to, label }: { to: string; label: string }) {
-  return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        `rounded-md px-3 py-2 text-sm font-semibold ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-200 dark:text-slate-200 dark:hover:bg-slate-800'}`
-      }
-    >
-      {label}
-    </NavLink>
-  )
-}
 
 export default function App() {
   const { t } = useI18n()
+  const location = useLocation()
+
+  const activeHref = location.pathname === '/' ? '/dashboard' : location.pathname
+  const logoUrl = '/logo-source.png'
+
+  const items = [
+    { label: t('nav.dashboard') ?? 'Dashboard', href: '/dashboard' },
+    { label: t('nav.subscriptions') ?? 'Suscripciones', href: '/subscriptions' },
+    { label: t('nav.calendar') ?? 'Calendario', href: '/calendar' },
+    { label: t('nav.settings') ?? 'Ajustes', href: '/settings' },
+  ]
 
   return (
     <div className="relative min-h-screen text-slate-900 dark:text-white">
@@ -37,15 +36,17 @@ export default function App() {
       </div>
 
       <div className="min-h-screen bg-slate-50/65 dark:bg-slate-950/65">
-        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
-            <div className="text-sm font-black tracking-wide">Subly</div>
-            <nav className="flex items-center gap-2">
-              <Tab to="/dashboard" label={t('nav.dashboard') ?? 'Dashboard'} />
-              <Tab to="/subscriptions" label={t('nav.subscriptions') ?? 'Suscripciones'} />
-              <Tab to="/settings" label={t('nav.settings') ?? 'Ajustes'} />
-            </nav>
-          </div>
+        <header className="sticky top-0 z-10 bg-transparent">
+          <PillNav
+            logo={logoUrl}
+            logoAlt="Subly"
+            items={items}
+            activeHref={activeHref}
+            baseColor="#e2e8f0"
+            pillColor="#5227ff"
+            hoveredPillTextColor="#e2e8f0"
+            pillTextColor="#e2e8f0"
+          />
         </header>
 
         <main className="mx-auto max-w-3xl px-4 py-4">

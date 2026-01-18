@@ -1,0 +1,257 @@
+:root {
+  --pill-radius: 999px;
+  --subly-1: #5227ff;
+  --subly-2: #ff9ffc;
+  --subly-3: #b19eef;
+}
+
+.pill-nav-container {
+  position: relative;
+}
+
+.pill-nav {
+  --shadow: 0 18px 60px rgba(2, 6, 23, 0.55);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  margin: 10px auto;
+  max-width: 48rem;
+  padding: 10px 12px;
+
+  color: var(--pill-text);
+  border: 1px solid transparent;
+  border-radius: var(--pill-radius);
+
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.55), rgba(2, 6, 23, 0.82)) padding-box,
+    linear-gradient(90deg, var(--subly-1), var(--subly-2), var(--subly-3)) border-box;
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+}
+
+:where(.dark) .pill-nav {
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.65);
+}
+
+.pill-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+
+  border: 1px solid rgba(177, 158, 239, 0.25);
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--pill-text);
+
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  flex: 0 0 auto;
+}
+
+/* same look in dark/light for a consistent "Subly" glass pill */
+
+.pill-logo:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 3px rgba(82, 39, 255, 0.18), 0 10px 30px rgba(82, 39, 255, 0.12);
+}
+
+.pill-logo img {
+  width: 24px;
+  height: 24px;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 14px rgba(82, 39, 255, 0.25));
+}
+
+.pill-nav-items {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pill-list {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+}
+
+.pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--pill-radius);
+
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+
+  color: var(--pill-text);
+  border: 1px solid rgba(177, 158, 239, 0.18);
+  overflow: hidden;
+
+  background: rgba(255, 255, 255, 0.0);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+/* same look in dark/light for a consistent "Subly" glass pill */
+
+.pill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 159, 252, 0.28);
+  background: linear-gradient(90deg, rgba(82, 39, 255, 0.18), rgba(255, 159, 252, 0.12));
+  box-shadow: 0 0 0 3px rgba(255, 159, 252, 0.12);
+}
+
+.pill.is-active {
+  border-color: rgba(82, 39, 255, 0.38);
+  background: linear-gradient(90deg, rgba(82, 39, 255, 0.22), rgba(255, 159, 252, 0.16));
+  box-shadow: 0 0 0 3px rgba(82, 39, 255, 0.14);
+}
+
+.hover-circle {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+
+  background: var(--pill-bg);
+  pointer-events: none;
+  opacity: 0.95;
+  filter: blur(0.2px);
+}
+
+.label-stack {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.pill-label,
+.pill-label-hover {
+  grid-area: 1 / 1;
+  will-change: transform;
+  line-height: 1;
+}
+
+.pill-label-hover {
+  color: var(--hover-text);
+  opacity: 0;
+}
+
+/* Mobile */
+.mobile-menu-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(177, 158, 239, 0.25);
+  background: rgba(15, 23, 42, 0.45);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+/* same look in dark/light for a consistent "Subly" glass pill */
+
+.hamburger-line {
+  display: block;
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  color: var(--pill-text);
+}
+
+.mobile-menu-popover {
+  max-width: 48rem;
+  margin: 8px auto 0;
+  padding: 8px;
+
+  border-radius: 18px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.7), rgba(2, 6, 23, 0.9)) padding-box,
+    linear-gradient(90deg, var(--subly-1), var(--subly-2), var(--subly-3)) border-box;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 16px 45px rgba(2, 6, 23, 0.28);
+}
+
+:where(.dark) .mobile-menu-popover {
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.55);
+}
+
+.mobile-menu-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.mobile-menu-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 13px;
+  text-transform: uppercase;
+
+  color: var(--pill-text);
+  border: 1px solid rgba(177, 158, 239, 0.18);
+  background: rgba(255, 255, 255, 0.0);
+}
+
+.mobile-menu-link.is-active {
+  border-color: rgba(82, 39, 255, 0.38);
+  background: linear-gradient(90deg, rgba(82, 39, 255, 0.22), rgba(255, 159, 252, 0.16));
+}
+
+.mobile-menu-link:hover {
+  border-color: rgba(255, 159, 252, 0.28);
+  background: linear-gradient(90deg, rgba(82, 39, 255, 0.18), rgba(255, 159, 252, 0.12));
+}
+
+@media (max-width: 640px) {
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: inline-flex;
+  }
+
+  .pill-nav {
+    margin: 10px 12px;
+    max-width: unset;
+  }
+
+  .mobile-menu-popover {
+    margin: 8px 12px 0;
+    max-width: unset;
+  }
+}
+
+@media (min-width: 641px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
