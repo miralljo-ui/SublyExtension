@@ -1,0 +1,20 @@
+.text-type {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.15em;
+  white-space: pre-wrap;
+}
+
+.text-type__content {
+  display: inline-block;
+}
+
+.text-type__cursor {
+  display: inline-block;
+  opacity: 1;
+  transform: translateY(0.02em);
+}
+
+.text-type__cursor--hidden {
+  opacity: 0 !important;
+}

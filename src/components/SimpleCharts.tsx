@@ -279,11 +279,12 @@ type PieChartProps = {
   segments: PieSegment[]
   formatValue?: (value: number) => string
   ariaLabel?: string
+  size?: number
 }
 
 const PIE_COLORS = ['text-indigo-500', 'text-emerald-500', 'text-rose-500', 'text-amber-500', 'text-sky-500', 'text-violet-500']
 
-export function SimplePieChart({ segments, formatValue, ariaLabel = 'Pie chart' }: PieChartProps) {
+export function SimplePieChart({ segments, formatValue, ariaLabel = 'Pie chart', size = 224 }: PieChartProps) {
   const total = segments.reduce((sum, s) => sum + (Number.isFinite(s.value) ? s.value : 0), 0)
   if (total <= 0) {
     return <div className="text-sm text-slate-500">No hay datos para graficar.</div>
@@ -330,7 +331,7 @@ export function SimplePieChart({ segments, formatValue, ariaLabel = 'Pie chart' 
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-      <div className="h-56 w-56">
+      <div className="shrink-0" style={{ height: size, width: size }}>
         <Doughnut aria-label={ariaLabel} role="img" data={data} options={options} />
       </div>
 

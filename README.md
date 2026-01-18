@@ -7,7 +7,10 @@ Chrome Extension (Manifest V3) with a Side Panel app to manage subscriptions whi
 - Side Panel (React) with:
   - Dashboard (monthly equivalent totals + next renewals)
   - Subscriptions list + add/edit form
-  - Calendar route opens the real Google Calendar (cannot embed)
+  - Calendar view (agenda of upcoming renewals + Google Calendar sync)
+- Optional Google integrations:
+  - Google Calendar sync creates/updates recurring all-day events for renewals
+  - Google Drive backup stores a JSON snapshot in `appDataFolder`
 - Content script on `https://calendar.google.com/*` adds a small floating button "Subly" to open the Side Panel.
 
 ## Setup
@@ -39,6 +42,8 @@ Output: `dist-ext/`
 4. Select the `SublyExtension/dist-ext` folder
 
 Then open Google Calendar and click the floating "Subly" button.
+
+Note: Subly does not embed Google Calendar inside the Side Panel. Instead, it can open Google Calendar in a tab and (optionally) sync renewal events into your calendar.
 
 ## Publishing to Chrome Web Store (notes)
 

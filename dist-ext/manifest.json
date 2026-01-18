@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Subly",
-  "version": "0.1.1",
-  "description": "Subscription manager in a Chrome Side Panel for Google Calendar.",
+  "version": "0.1.2",
+  "description": "Local-first subscription manager in a Chrome Side Panel, with optional Google Calendar sync.",
   "icons": {
     "16": "icon-16.png",
     "32": "icon-32.png",
