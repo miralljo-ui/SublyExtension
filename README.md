@@ -48,7 +48,7 @@ Note: Subly does not embed Google Calendar inside the Side Panel. Instead, it ca
 ## Publishing to Chrome Web Store (notes)
 
 - Build the extension with `npm run build:ext` and upload a ZIP of `dist-ext/`.
-- You will need a public **Privacy Policy URL** for the listing. A draft policy lives in `PRIVACY.md` (host it on GitHub Pages or any public URL).
+- You will need a public **Privacy Policy URL** for the listing. A policy lives in `PRIVACY.md`.
 - This extension uses Google OAuth scopes for Google Calendar and Drive appData backup. Depending on Google policies, your OAuth consent screen and requested scopes may require verification.
 
 Suggested checklist before submitting:
@@ -56,3 +56,14 @@ Suggested checklist before submitting:
 - Verify permissions are least-privilege (manifest `host_permissions`).
 - Ensure the injected Google Calendar button can be disabled (Settings → Extension).
 - Add store assets: icons, screenshots, short description, detailed description, and support email.
+
+## Host Privacy Policy on GitHub Pages
+
+This repo includes a `docs/` folder for GitHub Pages.
+
+1. Push to GitHub.
+2. In your repo: **Settings → Pages**
+3. Set **Source** to **Deploy from a branch**
+4. Select **Branch** = `main` (or `master`) and **Folder** = `/docs`
+
+In this repo, the policy page content is in `docs/PRIVACY.md`.
