@@ -47,7 +47,7 @@ Subly does not sell your data.
 
 Subly does not send your subscriptions to any third-party servers owned by the developer.
 
-Subly may call third-party exchange rate APIs to fetch currency conversion rates (for charts/totals). These requests are made directly from your device to the exchange rate provider(s) and may contain:
+Subly may call third-party exchange rate APIs to fetch currency conversion rates (for charts/totals). Those requests contain:
 
 - The selected base currency (e.g., `USD`)
 - No personally identifying information

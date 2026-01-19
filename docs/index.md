@@ -1,3 +1,3 @@
 # Subly
 
-- Privacy Policy: [PRIVACY](./PRIVACY.md)
+- Privacy Policy: [PRIVACY.md](./PRIVACY.md)

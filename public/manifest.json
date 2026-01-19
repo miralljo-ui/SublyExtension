@@ -1,6 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Subly",
+  "minimum_chrome_version": "114.0.0.0",
   "version": "0.1.2",
   "description": "Local-first subscription manager in a Chrome Side Panel, with optional Google Calendar sync.",
   "icons": {

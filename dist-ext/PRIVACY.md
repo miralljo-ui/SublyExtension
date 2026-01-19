@@ -1,6 +1,6 @@
 # Privacy Policy (Subly)
 
-Last updated: 2026-01-16
+Last updated: 2026-01-18
 
 ## Summary
 
@@ -32,7 +32,14 @@ If you use the Drive backup feature, Subly saves a JSON file (default name: `sub
 
 ### In Google Calendar (optional)
 
-If you use Calendar sync, Subly creates/updates/deletes calendar events that represent your subscription renewals.
+If you use Calendar sync, Subly creates/updates/deletes recurring all-day events that represent your subscription renewals.
+
+Those events may include:
+
+- Event title (subscription name + "Renewal")
+- Event description (amount, currency, billing period, and optionally category)
+
+Depending on your settings, Subly may create a dedicated calendar (e.g., "Subly Subscriptions") or use your primary calendar.
 
 ## Data Sharing
 
@@ -44,6 +51,11 @@ Subly may call third-party exchange rate APIs to fetch currency conversion rates
 
 - The selected base currency (e.g., `USD`)
 - No personally identifying information
+
+The exchange rate providers currently used include:
+
+- `open.er-api.com`
+- `api.exchangerate.host`
 
 ## Permissions
 

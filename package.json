@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:ext": "tsc -b && vite build --config vite.extension.config.ts",
+    "package:ext": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-extension.ps1",
     "preview": "vite preview",
     "test": "vitest --run"
   },
