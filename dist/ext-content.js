@@ -78,4 +78,17 @@
   } catch {
     // ignore
   }
+  // Listen for runtime messages to reload the calendar page.
+  try {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      try {
+        if (msg && msg.type === 'RELOAD_CALENDAR') {
+          try { window.focus() } catch {}
+          try { location.reload() } catch {}
+        }
+      } catch {}
+    })
+  } catch {
+    // ignore
+  }
 })()

@@ -9,8 +9,9 @@ Chrome Extension (Manifest V3) with a Side Panel app to manage subscriptions whi
   - Subscriptions list + add/edit form
   - Calendar view (agenda of upcoming renewals + Google Calendar sync)
 - Optional Google integrations:
-  - Google Calendar sync creates/updates recurring all-day events for renewals
-  - Google Drive backup stores a JSON snapshot in `appDataFolder`
+- Optional Google integrations:
+  - Google Calendar sync creates/updates/recreates/migrates (and, if requested, deletes) recurring all-day events for renewals. Subly uses a dedicated calendar by default; automatic sync may be enabled by default and can be disabled in Settings.
+  - Google Drive backup stores a JSON snapshot in `appDataFolder` (used for save/restore)
 - Content script on `https://calendar.google.com/*` adds a small floating button "Subly" to open the Side Panel.
 
 ## Setup
@@ -51,6 +52,8 @@ Note: Subly does not embed Google Calendar inside the Side Panel. Instead, it ca
 - You will need a public **Privacy Policy URL** for the listing. A policy lives in `PRIVACY.md` and `docs/PRIVACY.md` (you can host it with GitHub Pages).
 - This extension uses Google OAuth scopes for Google Calendar and Drive appData backup. Depending on Google policies, your OAuth consent screen and requested scopes may require verification.
 
+This extension uses Google OAuth scopes for Google Calendar and Drive appData backup. When enabled, Subly requests the scopes required to create, update, recreate/migrate, and delete events in the dedicated calendar, and to read/write a JSON backup in Drive `appDataFolder`. Depending on Google policies, your OAuth consent screen and requested scopes may require verification. Subly prompts for confirmation before destructive actions (for example: restoring backups, disconnecting Google, or deleting the dedicated calendar).
+
 See `PUBLISHING.md` for copy/paste permission and data-usage text.
 
 Suggested checklist before submitting:
@@ -58,3 +61,6 @@ Suggested checklist before submitting:
 - Verify permissions are least-privilege (manifest `host_permissions`).
 - Ensure the injected Google Calendar button can be disabled (Settings → Extension).
 - Add store assets: icons, screenshots, short description, detailed description, and support email.
+ - Verify permissions are least-privilege (manifest `host_permissions`).
+ - Ensure the injected Google Calendar button can be disabled (Settings → Extension) and that automatic calendar sync can be turned off by the user.
+ - Add store assets: icons, screenshots, short description, detailed description, and support email.

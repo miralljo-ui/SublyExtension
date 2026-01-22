@@ -1,6 +1,6 @@
 # Privacy Policy (Subly)
 
-Last updated: 2026-01-18
+Last updated: 2026-01-22
 
 ## Summary
 
@@ -32,14 +32,14 @@ If you use the Drive backup feature, Subly saves a JSON file (default name: `sub
 
 ### In Google Calendar (optional)
 
-If you use Calendar sync, Subly creates/updates/deletes recurring all-day events that represent your subscription renewals.
+If you use Calendar sync, Subly creates, updates, recreates, migrates, and deletes recurring all-day events that represent your subscription renewals.
 
 Those events may include:
 
 - Event title (subscription name + "Renewal")
 - Event description (amount, currency, billing period, and optionally category)
 
-Depending on your settings, Subly may create a dedicated calendar (e.g., "Subly Subscriptions") or use your primary calendar.
+Subly now creates and uses a dedicated calendar by default (for example, "Subly Subscriptions") to host its events. Subly will ensure this calendar exists in your Google account and will generally create or update events there. When necessary (for example, if an event is missing, or if an existing event lives in a different calendar), Subly may recreate or migrate events into the dedicated calendar. If the dedicated calendar is deleted or you disconnect your Google account, Subly will prompt for confirmation before taking destructive actions and may remove the events it previously created in that calendar.
 
 ## Data Sharing
 
@@ -71,11 +71,15 @@ Subly also requests host permissions to reach:
 - `www.googleapis.com` endpoints for Google Calendar and Google Drive APIs
 - Exchange rate providers used for currency conversion
 
+Note on Calendar permissions: when you enable Calendar sync Subly requests the Google Calendar scopes necessary to create, update, and delete events in the calendar it uses. These operations are performed by Subly via the Google Calendar API using your OAuth consent and occur from your device using the authorized credentials.
+
 ## Your Choices
 
 - You can disable the floating Google Calendar button in Settings.
 - You can clear local data in Settings.
 - You can choose whether to use Google Drive backup and Google Calendar sync.
+
+- Calendar sync may be enabled by default: Subly's calendar synchronization can come enabled by default (configuration `calendarAutoSyncAll`). When enabled, Subly may automatically create and update events in the dedicated calendar. You can disable automatic synchronization from the app Settings to stop Subly from creating or updating Google Calendar events automatically.
 
 ## Contact
 
