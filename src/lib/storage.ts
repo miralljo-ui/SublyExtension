@@ -6,8 +6,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   language: 'es',
   currencyDisplayMode: 'original',
   baseCurrency: 'USD',
-  calendarAutoSyncAll: false,
-  calendarUseDedicatedCalendar: false,
+  calendarAutoSyncAll: true,
   calendarFloatingButtonEnabled: true,
   calendarReminderDaysBefore: 1,
   calendarReminderMethod: 'popup',
@@ -23,7 +22,6 @@ export function normalizeState(input: Partial<AppState> | null | undefined): App
   const display = rawSettings?.currencyDisplayMode === 'convertToBase' ? 'convertToBase' : 'original'
   const baseCurrency = String(rawSettings?.baseCurrency ?? DEFAULT_SETTINGS.baseCurrency).trim().toUpperCase() || DEFAULT_SETTINGS.baseCurrency
   const calendarAutoSyncAll = Boolean(rawSettings?.calendarAutoSyncAll ?? DEFAULT_SETTINGS.calendarAutoSyncAll)
-  const calendarUseDedicatedCalendar = Boolean(rawSettings?.calendarUseDedicatedCalendar ?? DEFAULT_SETTINGS.calendarUseDedicatedCalendar)
   const calendarFloatingButtonEnabled = rawSettings?.calendarFloatingButtonEnabled === false ? false : true
 
   const toIntInRange = (v: unknown, fallback: number, min: number, max: number) => {
@@ -55,7 +53,6 @@ export function normalizeState(input: Partial<AppState> | null | undefined): App
       currencyDisplayMode: display,
       baseCurrency,
       calendarAutoSyncAll,
-      calendarUseDedicatedCalendar,
       calendarFloatingButtonEnabled,
       calendarReminderDaysBefore,
       calendarReminderMethod,

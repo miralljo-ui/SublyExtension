@@ -4,9 +4,11 @@ import { MAJOR_CURRENCIES } from '../lib/types'
 import { useI18n } from '../lib/i18n'
 import { useToast } from '../components/Toast'
 import { driveLoadAppStateJson, driveSaveAppStateJson } from '../lib/googleDrive'
+import { deleteSubscriptionsCalendar } from '../lib/googleCalendar'
 import { DEFAULT_SETTINGS, normalizeState } from '../lib/storage'
 import { disconnectGoogle } from '../lib/googleAuth'
 import GradientText from '../components/ui/GradientText'
+import { ImportExport } from '../components/ImportExport'
 
 function SettingsCard({
   title,
@@ -138,6 +140,58 @@ export function Settings() {
   const { t, language } = useI18n()
   const toast = useToast()
 
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean
+    title?: string
+    message?: string
+    confirmLabel?: string
+    onConfirm?: () => void
+  }>({ open: false })
+
+  function openConfirm(opts: { title?: string; message?: string; confirmLabel?: string; onConfirm?: () => void }) {
+    setConfirmState({ open: true, ...opts })
+  }
+
+  function closeConfirm() {
+    setConfirmState({ open: false })
+  }
+
+  function ConfirmModal() {
+    if (!confirmState.open) return null
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="max-w-lg rounded-lg bg-slate-900 p-6">
+          <div className="text-lg font-semibold text-slate-100">{confirmState.title}</div>
+          <div className="mt-3 text-sm text-slate-300">{confirmState.message}</div>
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              type="button"
+              className="rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600"
+              onClick={() => {
+                closeConfirm()
+              }}
+            >
+              {t('common.cancel') ?? 'Cancelar'}
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500"
+              onClick={() => {
+                try {
+                  confirmState.onConfirm && confirmState.onConfirm()
+                } catch (e) {
+                  // ignore
+                }
+              }}
+            >
+              {confirmState.confirmLabel ?? (t('common.confirm') ?? 'Confirmar')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const [driveBusy, setDriveBusy] = useState<null | 'save' | 'restore'>(null)
   const [feedbackText, setFeedbackText] = useState('')
 
@@ -174,13 +228,6 @@ export function Settings() {
     setSettings({
       ...state.settings,
       calendarAutoSyncAll: enabled,
-    })
-  }
-
-  function toggleCalendarDedicated(enabled: boolean) {
-    setSettings({
-      ...state.settings,
-      calendarUseDedicatedCalendar: enabled,
     })
   }
 
@@ -222,7 +269,6 @@ export function Settings() {
         currencyDisplayMode: state.settings.currencyDisplayMode,
         baseCurrency: state.settings.baseCurrency,
         calendarAutoSyncAll: Boolean(state.settings.calendarAutoSyncAll),
-        calendarUseDedicatedCalendar: Boolean(state.settings.calendarUseDedicatedCalendar),
         calendarFloatingButtonEnabled: state.settings.calendarFloatingButtonEnabled !== false,
         calendarReminderDaysBefore: Math.max(0, Math.trunc(Number(state.settings.calendarReminderDaysBefore ?? 1))),
         calendarReminderMethod: (state.settings.calendarReminderMethod === 'email' ? 'email' : 'popup'),
@@ -300,74 +346,147 @@ export function Settings() {
   async function restoreBackupFromDrive() {
     if (driveBusy) return
     const confirmText = t('drive.restoreConfirm') ?? 'Esto reemplazará tus datos locales con los de Drive. ¿Continuar?'
-    if (!window.confirm(confirmText)) return
 
-    setDriveBusy('restore')
-    try {
-      const loaded = await driveLoadAppStateJson({
-        fileId: state.settings.driveBackupFileId,
-        interactive: true,
-      })
+    openConfirm({
+      title: t('drive.restoreTitle') ?? 'Restaurar desde Drive',
+      message: confirmText,
+      confirmLabel: t('common.confirm') ?? 'Confirmar',
+      onConfirm: async () => {
+        setDriveBusy('restore')
+        try {
+          const loaded = await driveLoadAppStateJson({
+            fileId: state.settings.driveBackupFileId,
+            interactive: true,
+          })
 
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(loaded.jsonText)
-      } catch {
-        throw new Error('Invalid JSON in Drive backup file.')
-      }
+          let parsed: unknown
+          try {
+            parsed = JSON.parse(loaded.jsonText)
+          } catch {
+            throw new Error('Invalid JSON in Drive backup file.')
+          }
 
-      const rawState = parsed && typeof parsed === 'object' && 'state' in (parsed as any) ? (parsed as any).state : parsed
-      const normalized = normalizeState(rawState as any)
+          const rawState = parsed && typeof parsed === 'object' && 'state' in (parsed as any) ? (parsed as any).state : parsed
+          const normalized = normalizeState(rawState as any)
 
-      setSubscriptions(normalized.subscriptions)
-      setSettings({
-        ...normalized.settings,
-        driveBackupFileId: loaded.fileId,
-        driveLastBackupAt: loaded.modifiedTime ?? new Date().toISOString(),
-      })
+          setSubscriptions(normalized.subscriptions)
+          setSettings({
+            ...normalized.settings,
+            driveBackupFileId: loaded.fileId,
+            driveLastBackupAt: loaded.modifiedTime ?? new Date().toISOString(),
+          })
 
-      toast.success(t('drive.backupRestored') ?? 'Datos restaurados desde Google Drive.')
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      toast.error((t('drive.backupRestoreFailed') ?? 'No se pudo restaurar desde Google Drive.') + (msg ? ` ${msg}` : ''))
-    } finally {
-      setDriveBusy(null)
-    }
+          toast.success(t('drive.backupRestored') ?? 'Datos restaurados desde Google Drive.')
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          toast.error((t('drive.backupRestoreFailed') ?? 'No se pudo restaurar desde Google Drive.') + (msg ? ` ${msg}` : ''))
+        } finally {
+          setDriveBusy(null)
+          closeConfirm()
+        }
+      },
+    })
   }
 
   async function disconnectGoogleAccount() {
     const confirmText = t('settings.googleDisconnectConfirm') ??
       'Esto desconectará Subly de tu cuenta de Google en este navegador. ¿Continuar?'
-    if (!window.confirm(confirmText)) return
 
-    try {
-      const res = await disconnectGoogle({ interactive: false })
-      if (!res.hadToken) {
-        toast.info(t('settings.googleDisconnectNoToken') ?? 'No hay sesión activa que desconectar.')
-        return
-      }
-      toast.success(t('settings.googleDisconnectDone') ?? 'Desconectado. La próxima vez se pedirán permisos de nuevo.')
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      toast.error(msg || 'Disconnect failed')
-    }
+    openConfirm({
+      title: t('settings.googleDisconnectTitle') ?? 'Desconectar Google',
+      message: confirmText,
+      confirmLabel: t('common.confirm') ?? 'Confirmar',
+      onConfirm: async () => {
+        try {
+          const res = await disconnectGoogle({ interactive: false })
+          if (!res.hadToken) {
+            toast.info(t('settings.googleDisconnectNoToken') ?? 'No hay sesión activa que desconectar.')
+            closeConfirm()
+            return
+          }
+          toast.success(t('settings.googleDisconnectDone') ?? 'Desconectado. La próxima vez se pedirán permisos de nuevo.')
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          toast.error(msg || 'Disconnect failed')
+        } finally {
+          closeConfirm()
+        }
+      },
+    })
   }
 
   function resetLocalData() {
     const confirmText = t('settings.resetLocalConfirm') ??
       'Esto borrará tus datos locales (suscripciones y ajustes) en este dispositivo. ¿Continuar?'
-    if (!window.confirm(confirmText)) return
 
-    setSubscriptions([])
-    setSettings({
-      ...DEFAULT_SETTINGS,
-      language: state.settings.language,
+    openConfirm({
+      title: t('settings.resetLocalTitle') ?? 'Borrar datos locales',
+      message: confirmText,
+      confirmLabel: t('common.confirm') ?? 'Confirmar',
+      onConfirm: () => {
+        setSubscriptions([])
+        setSettings({
+          ...DEFAULT_SETTINGS,
+          language: state.settings.language,
+        })
+        toast.success(t('settings.resetLocalDone') ?? 'Datos locales borrados.')
+        try {
+          if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+            chrome.runtime.sendMessage({ type: 'RELOAD_CALENDAR' })
+          }
+        } catch {}
+        closeConfirm()
+      },
     })
-    toast.success(t('settings.resetLocalDone') ?? 'Datos locales borrados.')
+  }
+
+  async function deleteDedicatedCalendar() {
+    const calId = String(state.settings.calendarSubscriptionsCalendarId || '').trim()
+    if (!calId) {
+      toast.info(t('settings.deleteCalendarNone') ?? 'No hay calendario dedicado configurado.')
+      return
+    }
+
+    const confirmText = t('settings.deleteCalendarConfirm') ??
+      'Se eliminará el calendario y todos los eventos que Subly creó en él. Esta acción no se puede deshacer. ¿Continuar?'
+
+    openConfirm({
+      title: t('settings.deleteCalendarTitle') ?? 'Eliminar calendario dedicado',
+      message: confirmText,
+      confirmLabel: t('common.confirm') ?? 'Confirmar',
+      onConfirm: async () => {
+        try {
+          await deleteSubscriptionsCalendar({ calendarId: calId, interactive: true })
+
+          // Clear references to calendar/events in local subscriptions and settings.
+          const cleaned = state.subscriptions.map(s => ({ ...s, calendar: undefined }))
+          setSubscriptions(cleaned)
+          setSettings({
+            ...state.settings,
+            calendarSubscriptionsCalendarId: undefined,
+          })
+
+          toast.success(t('settings.deleteCalendarDone') ?? 'Calendario dedicado eliminado.')
+          try {
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+              chrome.runtime.sendMessage({ type: 'RELOAD_CALENDAR' })
+            }
+          } catch {
+            // ignore
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          toast.error((t('settings.deleteCalendarFailed') ?? 'No se pudo eliminar el calendario dedicado.') + (msg ? ` ${msg}` : ''))
+        } finally {
+          closeConfirm()
+        }
+      },
+    })
   }
 
   return (
     <div className="space-y-4">
+      <ConfirmModal />
       <SettingsGroup
         title={t('settings.groupGeneral') ?? 'General'}
         gradientColors={['#E2E8F0', '#94A3B8', '#A78BFA']}
@@ -450,19 +569,6 @@ export function Settings() {
           hideHeader
         >
           <div className="space-y-3">
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={Boolean(state.settings.calendarUseDedicatedCalendar)}
-                onChange={e => toggleCalendarDedicated(e.target.checked)}
-                className="mt-1 h-4 w-4"
-              />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-200">{t('settings.calendarDedicatedLabel') ?? 'Usar calendario dedicado'}</div>
-                <div className="mt-1 text-xs text-slate-400">{t('settings.calendarDedicatedHint') ?? 'Al activarlo, se crea un calendario dedicado para tus suscripciones.'}</div>
-              </div>
-            </label>
-
             <label className="flex items-start gap-3">
               <input
                 type="checkbox"
@@ -558,12 +664,43 @@ export function Settings() {
             </div>
           </div>
         </SettingsCard>
+
+        <SettingsCard
+          title={t('settings.deleteCalendarTitle') ?? 'Eliminar calendario dedicado'}
+          description={t('settings.deleteCalendarDescription') ?? 'Elimina el calendario creado por Subly y todos los eventos asociados.'}
+          tone="rose"
+        >
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-rose-700 bg-rose-700/10 px-4 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-700/20"
+              onClick={deleteDedicatedCalendar}
+            >
+              {t('settings.deleteCalendarLabel') ?? 'Eliminar calendario dedicado'}
+            </button>
+            <div className="text-xs text-slate-400">{t('settings.deleteCalendarHint') ?? 'Esta acción eliminará permanentemente el calendario y los eventos creados por Subly.'}</div>
+          </div>
+        </SettingsCard>
+        
       </SettingsGroup>
 
       <SettingsGroup
         title={t('settings.groupData') ?? 'Datos y mantenimiento'}
         gradientColors={['#34D399', '#A3E635', '#60A5FA']}
       >
+        <SettingsCard
+          title={t('settings.importExportTitle') ?? 'Importar / Exportar JSON'}
+          description={t('settings.importExportDescription') ?? 'Exporta o importa tus suscripciones en formato JSON.'}
+          tone="teal"
+        >
+          <ImportExport
+            items={state.subscriptions}
+            onImport={setSubscriptions}
+            exportButtonClass="rounded-md bg-slate-600 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-500"
+            importLabelClass="rounded-md bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-300/90"
+          />
+        </SettingsCard>
+
         <SettingsCard
           title={t('drive.title') ?? 'Copia de seguridad'}
           description={t('drive.body') ?? 'Guarda una copia en tu Google Drive y restaura una copia anterior cuando lo necesites.'}
@@ -584,7 +721,7 @@ export function Settings() {
             </button>
             <button
               type="button"
-              className="rounded-md bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-200 disabled:opacity-60"
+              className="rounded-md bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-300/90 disabled:opacity-60"
               onClick={restoreBackupFromDrive}
               disabled={driveBusy !== null}
             >
@@ -615,13 +752,15 @@ export function Settings() {
             'Elimina suscripciones y restablece ajustes de este dispositivo. No borra tu copia en Drive ni eventos ya creados en Calendar.'}
           tone="rose"
         >
-          <button
-            type="button"
-            className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500"
-            onClick={resetLocalData}
-          >
-            {t('settings.resetLocalLabel') ?? 'Borrar datos locales'}
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500"
+              onClick={resetLocalData}
+            >
+              {t('settings.resetLocalLabel') ?? 'Borrar datos locales'}
+            </button>
+          </div>
         </SettingsCard>
       </SettingsGroup>
 
@@ -703,9 +842,7 @@ export function Settings() {
             </div>
             <div className="flex items-center justify-between gap-2 rounded-md border border-white/10 bg-slate-950/40 px-3 py-2">
               <div className="text-xs font-semibold text-slate-200">{t('settings.helpStatusDedicated') ?? 'Calendario dedicado'}</div>
-              <div className={state.settings.calendarUseDedicatedCalendar ? 'text-xs font-semibold text-emerald-300' : 'text-xs font-semibold text-slate-400'}>
-                {state.settings.calendarUseDedicatedCalendar ? (t('common.on') ?? 'ON') : (t('common.off') ?? 'OFF')}
-              </div>
+              <div className="text-xs font-semibold text-emerald-300">{t('common.on') ?? 'ON'}</div>
             </div>
             <div className="flex items-center justify-between gap-2 rounded-md border border-white/10 bg-slate-950/40 px-3 py-2">
               <div className="text-xs font-semibold text-slate-200">{t('settings.helpStatusFloating') ?? 'Botón flotante'}</div>

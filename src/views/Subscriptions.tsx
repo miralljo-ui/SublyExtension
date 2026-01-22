@@ -4,7 +4,7 @@ import type { Period, Subscription } from '../lib/types'
 import { createId, nextRenewalDate } from '../lib/storage'
 import { deleteCalendarEvent, ensureSubscriptionsCalendar, formatDateYMDLocal, upsertRecurringAllDayEvent } from '../lib/googleCalendar'
 import { convertCurrencySync, formatCurrency } from '../lib/money'
-import { ImportExport } from '../components/ImportExport'
+// Import/Export controls removed from this view per request
 import { useToast } from '../components/Toast'
 import GradientText from '../components/ui/GradientText'
 import { useStore } from '../store'
@@ -62,7 +62,6 @@ export function SubscriptionsView() {
   const displayMode = state.settings.currencyDisplayMode ?? 'original'
   const baseCurrency = (state.settings.baseCurrency || 'USD').toUpperCase()
   const calendarAutoSyncAll = Boolean(state.settings.calendarAutoSyncAll)
-  const calendarUseDedicatedCalendar = Boolean(state.settings.calendarUseDedicatedCalendar)
 
   const settingsRef = useRef(state.settings)
   useEffect(() => {
@@ -118,6 +117,7 @@ export function SubscriptionsView() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement | null>(null)
+  const [missingEvent, setMissingEvent] = useState<null | { id: string; name: string; calendarId?: string; eventId?: string }>(null)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -277,6 +277,15 @@ export function SubscriptionsView() {
 
     // Auto-backup to Drive (best-effort) if a backup file has been configured.
     void autoBackupToDrive(list)
+
+    // Ask any open Calendar page to reload so it reflects changes.
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ type: 'RELOAD_CALENDAR' })
+      }
+    } catch {
+      // ignore
+    }
   }
 
   function remove(id: string) {
@@ -312,6 +321,11 @@ export function SubscriptionsView() {
         try {
           await deleteCalendarEvent({ calendarId, eventId, interactive: true })
           toast.success(t('subscriptions.calendarEventDeleted') ?? 'Evento eliminado de Google Calendar.')
+          try {
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+              chrome.runtime.sendMessage({ type: 'RELOAD_CALENDAR' })
+            }
+          } catch {}
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e)
           toast.error(
@@ -320,6 +334,28 @@ export function SubscriptionsView() {
           )
         }
       })()
+    }
+  }
+
+  async function deleteSubscriptionNoConfirm(id: string) {
+    const current = subscriptionsRef.current
+    const s = current.find(x => x.id === id)
+    if (!s) return
+
+    const nextList = current.filter(x => x.id !== id)
+    subscriptionsRef.current = nextList
+    if (calendarAutoSyncAll) lastSyncSignatureRef.current = computeSyncSignature(nextList)
+
+    setSubscriptions(nextList)
+    if (editingId === id) resetForm()
+    toast.success(t('subscriptions.toastDeleted') ?? 'Suscripción eliminada.')
+    void autoBackupToDrive(nextList)
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ type: 'RELOAD_CALENDAR' })
+      }
+    } catch {
+      // ignore
     }
   }
 
@@ -333,7 +369,7 @@ export function SubscriptionsView() {
   const syncOne = useCallback(async (
     id: string,
     interactive: boolean,
-    opts?: { quiet?: boolean },
+    opts?: { quiet?: boolean; forceCreate?: boolean },
   ): Promise<{ ok: boolean; error?: string }> => {
     try {
       const current = subscriptionsRef.current
@@ -341,19 +377,17 @@ export function SubscriptionsView() {
       if (idx < 0) return { ok: false, error: 'Subscription not found' }
       const s = current[idx]
 
-      let targetCalendarId = s.calendar?.calendarId ?? 'primary'
-      if (calendarUseDedicatedCalendar) {
-        let ensured = subscriptionsCalendarIdRef.current
-        if (!ensured) {
-          ensured = await ensureSubscriptionsCalendar({ interactive })
-          subscriptionsCalendarIdRef.current = ensured
-          setSettings({
-            ...settingsRef.current,
-            calendarSubscriptionsCalendarId: ensured,
-          })
-        }
-        targetCalendarId = ensured
+      // Always create/update events in a dedicated calendar. Ensure it exists and persist its id.
+      let ensured = subscriptionsCalendarIdRef.current ?? settingsRef.current.calendarSubscriptionsCalendarId ?? null
+      if (!ensured) {
+        ensured = await ensureSubscriptionsCalendar({ interactive })
+        subscriptionsCalendarIdRef.current = ensured
+        setSettings({
+          ...settingsRef.current,
+          calendarSubscriptionsCalendarId: ensured,
+        })
       }
+      const targetCalendarId = ensured ?? (s.calendar?.calendarId ?? 'primary')
 
       const next = nextRenewalDate(s.startDate, s.period, new Date())
       const startYmd = formatDateYMDLocal(next)
@@ -415,14 +449,24 @@ export function SubscriptionsView() {
       }
 
       let link: Awaited<ReturnType<typeof upsertRecurringAllDayEvent>>
+      let recreated = false
       try {
-        link = await upsertRecurringAllDayEvent(buildUpsertArgs(targetCalendarId, shouldMigrate ? undefined : s.calendar?.eventId))
+        const eventIdArg = opts?.forceCreate ? undefined : (shouldMigrate ? undefined : s.calendar?.eventId)
+        const upsertArgs = {
+          ...buildUpsertArgs(targetCalendarId, eventIdArg),
+          // Always allow automatic recreation: if PATCH returns 404, create a new event.
+          throwOnMissingEvent: false,
+        }
+        link = await upsertRecurringAllDayEvent(upsertArgs)
       } catch (e) {
         const status = getStatus(e)
-        if (status !== 404) throw e
+        // If it's an auth issue, don't attempt silent recreation here — bubble up so UI can handle auth.
+        if (status === 401 || status === 403) throw e
 
-        // Calendar not found / stale calendarId. Recover by re-ensuring the dedicated calendar or falling back to primary.
-        if (calendarUseDedicatedCalendar) {
+        // For 404 and other non-auth errors, attempt to recreate the event:
+        // 1) try ensuring the dedicated calendar and create there
+        // 2) fallback to primary
+        try {
           const ensured = await ensureSubscriptionsCalendar({ interactive })
           subscriptionsCalendarIdRef.current = ensured
           setSettings({
@@ -430,9 +474,24 @@ export function SubscriptionsView() {
             calendarSubscriptionsCalendarId: ensured,
           })
           link = await upsertRecurringAllDayEvent(buildUpsertArgs(ensured, undefined))
-        } else {
-          link = await upsertRecurringAllDayEvent(buildUpsertArgs('primary', undefined))
+          recreated = true
+          try { console.debug('Subscriptions: recreated event in ensured calendar', ensured, s.id) } catch {}
+        } catch (err2) {
+          try {
+            link = await upsertRecurringAllDayEvent(buildUpsertArgs('primary', undefined))
+            recreated = true
+            try { console.debug('Subscriptions: recreated event in primary calendar', s.id) } catch {}
+          } catch (err3) {
+            // If recreation also fails, rethrow original error so it's handled below.
+            throw e
+          }
         }
+      }
+
+      // If the eventId changed compared to previous value, consider it a recreation.
+      if (s.calendar?.eventId && link?.eventId && s.calendar.eventId !== link.eventId) {
+        recreated = true
+        try { console.debug('Subscriptions: detected recreated eventId', s.id, s.calendar.eventId, '->', link.eventId) } catch {}
       }
 
       const updated = current.slice()
@@ -444,6 +503,9 @@ export function SubscriptionsView() {
         },
       }
       setSubscriptions(updated)
+      if (recreated) {
+        try { toast.success(t('subscriptions.missingRecreated') ?? 'Evento recreado en Calendar.') } catch {}
+      }
       return { ok: true }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -465,7 +527,7 @@ export function SubscriptionsView() {
       return { ok: false, error: msg }
     } finally {
     }
-  }, [baseCurrency, calendarUseDedicatedCalendar, displayMode, setSettings, setSubscriptions, t])
+  }, [baseCurrency, displayMode, setSettings, setSubscriptions, t])
 
   const syncAll = useCallback(async (interactive: boolean) => {
     if (syncBusyAll) return
@@ -490,6 +552,11 @@ export function SubscriptionsView() {
       else toast.success(baseMsg)
     } finally {
       setSyncBusyAll(false)
+      try {
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({ type: 'RELOAD_CALENDAR' })
+        }
+      } catch {}
     }
   }, [syncBusyAll, syncOne, t, toast])
 
@@ -761,55 +828,56 @@ export function SubscriptionsView() {
           <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('subscriptions.subtitle') ?? ''}</div>
         </div>
         <div className="flex items-center gap-2">
-          <ImportExport items={state.subscriptions} onImport={setSubscriptions} />
-          <button
-            type="button"
-            className={`inline-flex h-9 w-9 items-center justify-center rounded-md bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-60`}
-            disabled={state.subscriptions.length === 0 || syncBusyAll}
-            onClick={() => syncAll(true)}
-            title={t('subscriptions.syncAll') ?? 'Sincronizar todas'}
-            aria-label={t('subscriptions.syncAll') ?? 'Sincronizar todas'}
-            aria-busy={syncBusyAll}
-          >
-            {syncBusyAll ? (
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5 opacity-70"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 2v4" />
-                <path d="M12 18v4" />
-                <path d="M4.93 4.93l2.83 2.83" />
-                <path d="M16.24 16.24l2.83 2.83" />
-                <path d="M2 12h4" />
-                <path d="M18 12h4" />
-                <path d="M4.93 19.07l2.83-2.83" />
-                <path d="M16.24 7.76l2.83-2.83" />
-              </svg>
-            ) : (
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21 12a9 9 0 0 0-15.5-6.36" />
-                <path d="M3 4v6h6" />
-                <path d="M3 12a9 9 0 0 0 15.5 6.36" />
-                <path d="M21 20v-6h-6" />
-              </svg>
-            )}
-            <span className="sr-only">{syncBusyAll ? (t('subscriptions.syncing') ?? 'Sincronizando…') : (t('subscriptions.syncAll') ?? 'Sincronizar todas')}</span>
-          </button>
+          {state.subscriptions.length > 0 && (
+            <button
+              type="button"
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-md bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-60`}
+              disabled={syncBusyAll}
+              onClick={() => syncAll(true)}
+              title={t('subscriptions.syncAll') ?? 'Sincronizar todas'}
+              aria-label={t('subscriptions.syncAll') ?? 'Sincronizar todas'}
+              aria-busy={syncBusyAll}
+            >
+              {syncBusyAll ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 opacity-70"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 2v4" />
+                  <path d="M12 18v4" />
+                  <path d="M4.93 4.93l2.83 2.83" />
+                  <path d="M16.24 16.24l2.83 2.83" />
+                  <path d="M2 12h4" />
+                  <path d="M18 12h4" />
+                  <path d="M4.93 19.07l2.83-2.83" />
+                  <path d="M16.24 7.76l2.83-2.83" />
+                </svg>
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21 12a9 9 0 0 0-15.5-6.36" />
+                  <path d="M3 4v6h6" />
+                  <path d="M3 12a9 9 0 0 0 15.5 6.36" />
+                  <path d="M21 20v-6h-6" />
+                </svg>
+              )}
+              <span className="sr-only">{syncBusyAll ? (t('subscriptions.syncing') ?? 'Sincronizando…') : (t('subscriptions.syncAll') ?? 'Sincronizar todas')}</span>
+            </button>
+          )}
           <button
             type="button"
             className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
@@ -1275,6 +1343,75 @@ export function SubscriptionsView() {
                     {t('subscriptions.helpIncomplete') ?? 'Completa nombre, importe y fecha.'}
                   </div>
                 ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {missingEvent ? (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-slate-950/50" onClick={() => setMissingEvent(null)} />
+          <div className="relative mx-auto w-full max-w-2xl px-4 py-6">
+            <div role="dialog" aria-modal="true" className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+              <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
+                {t('subscriptions.missingTitle') ?? 'Evento no encontrado'}
+              </div>
+              <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                {t('subscriptions.missingBody', { name: missingEvent.name }) ?? `El evento asociado a “${missingEvent.name}” no existe en Google Calendar.`}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+                  onClick={async () => {
+                    const id = missingEvent.id
+                    setMissingEvent(null)
+                    // Recreate the event by forcing creation (ignore old eventId)
+                    const res = await syncOne(id, true, { forceCreate: true })
+                    if (res.ok) toast.success(t('subscriptions.missingRecreated') ?? 'Evento recreado en Calendar.')
+                    else toast.error((t('subscriptions.syncFailed') ?? 'Error al sincronizar.') + (res.error ? ` ${res.error}` : ''))
+                  }}
+                >
+                  {t('subscriptions.missingActionRecreate') ?? 'Recrear evento'}
+                </button>
+
+                <button
+                  type="button"
+                  className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500"
+                  onClick={async () => {
+                    const id = missingEvent.id
+                    setMissingEvent(null)
+                    await deleteSubscriptionNoConfirm(id)
+                  }}
+                >
+                  {t('subscriptions.missingActionDelete') ?? 'Eliminar suscripción'}
+                </button>
+
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-100"
+                  onClick={() => {
+                    // Clear the missing marker so the UI stops showing an error
+                    const cur = subscriptionsRef.current
+                    const idx = cur.findIndex(s => s.id === missingEvent.id)
+                    if (idx >= 0) {
+                      const s = cur[idx]
+                      const updated = cur.slice()
+                      updated[idx] = {
+                        ...s,
+                        calendar: {
+                          ...(s.calendar ?? { calendarId: 'primary' }),
+                          lastError: undefined,
+                          syncedAt: s.calendar?.syncedAt,
+                        },
+                      }
+                      setSubscriptions(updated)
+                    }
+                    setMissingEvent(null)
+                  }}
+                >
+                  {t('subscriptions.missingActionIgnore') ?? 'Ignorar'}
+                </button>
               </div>
             </div>
           </div>

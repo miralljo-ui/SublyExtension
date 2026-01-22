@@ -8,6 +8,9 @@ import { useToast } from './Toast'
 type ImportExportProps = {
   items: Subscription[]
   onImport: (items: Subscription[]) => void
+  exportButtonClass?: string
+  importLabelClass?: string
+  containerClass?: string
 }
 
 type ImportStatus = { type: 'success' | 'error'; message: string } | null
@@ -68,7 +71,7 @@ function normalizeImportedSubscription(input: any): Subscription | null {
   }
 }
 
-export function ImportExport({ items, onImport }: ImportExportProps) {
+export function ImportExport({ items, onImport, exportButtonClass, importLabelClass, containerClass }: ImportExportProps) {
   const { t } = useI18n()
   const [status, setStatus] = useState<ImportStatus>(null)
   const toast = useToast()
@@ -117,16 +120,16 @@ export function ImportExport({ items, onImport }: ImportExportProps) {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className={containerClass ?? 'flex items-center gap-2'}>
       <button
         type="button"
         onClick={handleExport}
-        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+        className={exportButtonClass ?? 'rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800'}
       >
         {t('common.exportJson') ?? 'Exportar JSON'}
       </button>
 
-      <label className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">
+      <label className={importLabelClass ?? 'rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800'}>
         {t('common.importJson') ?? 'Importar JSON'}
         <input
           type="file"

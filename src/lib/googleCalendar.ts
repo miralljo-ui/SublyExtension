@@ -154,6 +154,8 @@ export type UpsertRecurringAllDayEventInput = {
   reminderMethod?: 'popup' | 'email'
   token?: string
   interactive?: boolean
+  // If true, don't auto-create a missing event when a PATCH returns 404; rethrow instead.
+  throwOnMissingEvent?: boolean
 }
 
 function clampReminderMinutes(v: number): number {
@@ -205,11 +207,43 @@ export async function upsertRecurringAllDayEvent(input: UpsertRecurringAllDayEve
           path: `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(input.eventId)}`,
           body,
         })
-        return { calendarId, eventId: updated.id, syncedAt: new Date().toISOString() }
+
+        // Extra verification: some edge cases may not return 404 on PATCH even if
+        // the event is effectively gone. Do a GET to ensure the event exists and
+        // has the expected start date; if the GET returns 404, fall through to create.
+        try {
+          const fetched = await calendarApiRequest<any>({
+            token,
+            method: 'GET',
+            path: `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(updated.id)}`,
+          })
+          // Basic sanity check: ensure start.date matches requested start date.
+          if (fetched && fetched.start && fetched.start.date && String(fetched.start.date) === input.startDateYmd) {
+            return { calendarId, eventId: updated.id, syncedAt: new Date().toISOString() }
+          }
+          // If start date doesn't match, proceed to recreate to ensure correct instance.
+          console.debug && console.debug('upsertRecurringAllDayEvent: PATCH returned but event content differed; recreating', calendarId, input.eventId)
+        } catch (getErr) {
+          const getStatus = getHttpStatus(getErr)
+          if (getStatus === 404) {
+            // Event truly missing; if caller requested to throw, do so.
+            if (input.throwOnMissingEvent) throw getErr
+            // Otherwise continue to create below.
+          } else if (shouldPurgeToken(getStatus)) {
+            await removeCachedToken(token)
+            throw getErr
+          } else {
+            // Non-404 GET error: rethrow to let upper layers decide.
+            throw getErr
+          }
+        }
       } catch (e) {
-        // If the event was deleted or the ID is stale, recreate it.
+        // If the event was deleted or the ID is stale, either recreate it or
+        // propagate the 404 to caller depending on `throwOnMissingEvent`.
         const status = getHttpStatus(e)
+        if (status === 404 && input.throwOnMissingEvent) throw e
         if (status !== 404) throw e
+        // Otherwise continue to create a new event below.
       }
     }
 
@@ -299,6 +333,30 @@ export async function ensureSubscriptionsCalendar(args?: { token?: string; inter
     return created.id
   } catch (e) {
     await removeCachedToken(token)
+    throw e
+  }
+}
+
+export async function deleteSubscriptionsCalendar(args?: { calendarId?: string; token?: string; interactive?: boolean }): Promise<void> {
+  const calendarId = String(args?.calendarId || '').trim()
+  if (!calendarId) throw new Error('Missing calendar id')
+  const interactive = args?.interactive ?? true
+  let token = args?.token
+  if (!token) token = await getAuthToken(interactive)
+
+  try {
+    await calendarApiRequest<void>({
+      token,
+      method: 'DELETE',
+      path: `/calendars/${encodeURIComponent(calendarId)}`,
+    })
+  } catch (e) {
+    const status = getHttpStatus(e)
+    // If already gone, treat as success.
+    if (status === 404) return
+    if (shouldPurgeToken(status)) {
+      await removeCachedToken(token)
+    }
     throw e
   }
 }

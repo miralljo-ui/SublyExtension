@@ -66,7 +66,6 @@ export type AppSettings = {
 
   // When enabled, subscription events are published to a dedicated calendar
   // so they can be filtered in Google Calendar.
-  calendarUseDedicatedCalendar?: boolean
   calendarSubscriptionsCalendarId?: string
 
   // Default reminders for synced subscription events.

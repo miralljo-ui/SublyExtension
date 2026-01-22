@@ -19,13 +19,14 @@
       "128": "icon-128.png"
     }
   },
-  "permissions": ["sidePanel", "storage", "identity"],
+  "permissions": ["sidePanel", "storage", "identity", "notifications"],
   "host_permissions": [
     "https://calendar.google.com/*",
     "https://www.googleapis.com/calendar/v3/*",
     "https://www.googleapis.com/drive/v3/*",
     "https://www.googleapis.com/upload/drive/v3/*",
     "https://oauth2.googleapis.com/*",
+    "https://accounts.google.com/*",
     "https://api.exchangerate.host/*",
     "https://open.er-api.com/*"
   ],

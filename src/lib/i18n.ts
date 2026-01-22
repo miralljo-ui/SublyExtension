@@ -111,6 +111,8 @@ const translations: Record<Language, TranslationDict> = {
     settings: {
       groupGeneral: 'General',
       groupIntegrations: 'Integraciones',
+      importExportTitle: 'Importar / Exportar JSON',
+      importExportDescription: 'Exporta o importa tus suscripciones en formato JSON.',
       groupData: 'Datos y mantenimiento',
       groupHelp: 'Ayuda',
 
@@ -145,9 +147,17 @@ const translations: Record<Language, TranslationDict> = {
 
       dataTitle: 'Datos',
       resetLocalLabel: 'Borrar datos locales',
-      resetLocalHint: 'Elimina suscripciones y restablece ajustes de este dispositivo. No borra tu copia en Drive ni eventos ya creados en Calendar.',
-      resetLocalConfirm: 'Esto borrará tus datos locales (suscripciones y ajustes) en este dispositivo. ¿Continuar?',
+      resetLocalHint: 'Elimina suscripciones y restablece ajustes de este dispositivo. No borra tu copia en Drive ni eventos ya creados en Calendar. Si quieres eliminar también los eventos creados por Subly, usa "Eliminar calendario dedicado" más abajo.',
+      resetLocalConfirm: 'Esto borrará tus datos locales (suscripciones y ajustes) en este dispositivo. No elimina el calendario dedicado ni los eventos en Google Calendar. ¿Continuar?',
       resetLocalDone: 'Datos locales borrados.',
+      deleteCalendarTitle: 'Eliminar calendario dedicado',
+      deleteCalendarDescription: 'Borra el calendario que creó Subly junto con todos los eventos que contiene.',
+      deleteCalendarHint: 'Acción irreversible: eliminará permanentemente el calendario y los eventos creados por Subly.',
+      deleteCalendarLabel: 'Eliminar calendario dedicado',
+      deleteCalendarConfirm: 'Se eliminará el calendario y todos los eventos que Subly creó en él. Esta acción no se puede deshacer. ¿Continuar?',
+      deleteCalendarDone: 'Calendario dedicado eliminado.',
+      deleteCalendarFailed: 'No se pudo eliminar el calendario dedicado.',
+      deleteCalendarNone: 'No hay calendario dedicado configurado.',
 
       privacyTitle: 'Permisos',
       privacyBody:
@@ -314,6 +324,12 @@ const translations: Record<Language, TranslationDict> = {
       deleteConfirm: '¿Eliminar “{{name}}”? También se borrará su evento en Google Calendar si existe.',
       calendarEventDeleted: 'Evento eliminado de Google Calendar.',
       calendarDeleteFailed: 'No se pudo borrar el evento en Google Calendar.',
+      missingTitle: 'Evento no encontrado',
+      missingBody: 'El evento asociado a “{{name}}” no existe en Google Calendar.',
+      missingActionRecreate: 'Recrear evento',
+      missingActionDelete: 'Eliminar suscripción',
+      missingActionIgnore: 'Ignorar',
+      missingRecreated: 'Evento recreado en Calendar',
     },
     dashboard: {
       monthlySpendTitle: 'Gasto mensual (equivalente)',
@@ -446,6 +462,8 @@ const translations: Record<Language, TranslationDict> = {
     settings: {
       groupGeneral: 'General',
       groupIntegrations: 'Integrations',
+      importExportTitle: 'Import / Export JSON',
+      importExportDescription: 'Export or import your subscriptions in JSON format.',
       groupData: 'Data & maintenance',
       groupHelp: 'Help',
 
@@ -480,9 +498,17 @@ const translations: Record<Language, TranslationDict> = {
 
       dataTitle: 'Data',
       resetLocalLabel: 'Clear local data',
-      resetLocalHint: 'Clears subscriptions and resets settings on this device. It does not delete your Drive backup nor existing Calendar events.',
-      resetLocalConfirm: 'This will clear your local data (subscriptions and settings) on this device. Continue?',
+      resetLocalHint: 'Clears subscriptions and resets settings on this device. It does not delete your Drive backup nor existing Calendar events. To also remove events Subly created, use "Delete dedicated calendar" below.',
+      resetLocalConfirm: 'This will clear your local data (subscriptions and settings) on this device. It does not delete the dedicated calendar or Calendar events. Continue?',
       resetLocalDone: 'Local data cleared.',
+      deleteCalendarTitle: 'Delete dedicated calendar',
+      deleteCalendarDescription: 'Remove the calendar Subly created and all events it contains.',
+      deleteCalendarHint: 'Irreversible: permanently deletes the calendar and any events Subly added.',
+      deleteCalendarLabel: 'Delete dedicated calendar',
+      deleteCalendarConfirm: 'This will delete the dedicated calendar and all events Subly created in it. This action cannot be undone. Continue?',
+      deleteCalendarDone: 'Dedicated calendar deleted.',
+      deleteCalendarFailed: 'Failed to delete dedicated calendar.',
+      deleteCalendarNone: 'No dedicated calendar configured.',
 
       privacyTitle: 'Permissions',
       privacyBody:
@@ -649,6 +675,12 @@ const translations: Record<Language, TranslationDict> = {
       deleteConfirm: 'Delete “{{name}}”? Its Google Calendar event will also be deleted if it exists.',
       calendarEventDeleted: 'Google Calendar event deleted.',
       calendarDeleteFailed: 'Could not delete the Google Calendar event.',
+      missingTitle: 'Event not found',
+      missingBody: 'The event linked to “{{name}}” was not found in Google Calendar.',
+      missingActionRecreate: 'Recreate event',
+      missingActionDelete: 'Delete subscription',
+      missingActionIgnore: 'Ignore',
+      missingRecreated: 'Event recreated in Calendar',
     },
     dashboard: {
       monthlySpendTitle: 'Monthly spend (equivalent)',
