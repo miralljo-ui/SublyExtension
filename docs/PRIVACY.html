@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Privacy Policy (Subly)</title>
+</head>
+<body>
+  <h1>Privacy Policy (Subly)</h1>
+  <p>Last updated: 2026-01-18</p>
+
+  <h2>Summary</h2>
+  <p>Subly is a Chrome extension that helps you manage subscription reminders in a Side Panel while using Google Calendar.</p>
+  <p>Subly stores your subscriptions locally on your device. If you enable Google integrations, Subly uses Google OAuth to:</p>
+  <ul>
+    <li>Create, update, and delete calendar events in your Google Calendar.</li>
+    <li>Save and load a backup JSON file in your Google Drive <strong>appDataFolder</strong> (a hidden, app-specific folder).</li>
+  </ul>
+
+  <h2>Data Subly Stores</h2>
+  <h3>Locally (on your device)</h3>
+  <p>Subly stores an app state object that includes:</p>
+  <ul>
+    <li>Your subscriptions (name, price, currency, period, start date, optional category)</li>
+    <li>Optional Google Calendar linkage metadata for each subscription (calendarId, eventId, sync timestamps, last error)</li>
+    <li>App settings (language, currency display, calendar sync preferences, Drive backup metadata, etc.)</li>
+  </ul>
+  <p>This is stored using <code>chrome.storage.local</code> when running as an extension.</p>
+
+  <h3>In Google Drive (optional)</h3>
+  <p>If you use the Drive backup feature, Subly saves a JSON file (default name: <code>subly-state.json</code>) to your Drive <strong>appDataFolder</strong>.</p>
+  <ul>
+    <li>This file is not visible in your main Drive folders.</li>
+    <li>Subly only reads/writes this app-specific file.</li>
+  </ul>
+
+  <h3>In Google Calendar (optional)</h3>
+  <p>If you use Calendar sync, Subly creates/updates/deletes recurring all-day events that represent your subscription renewals. Those events may include:</p>
+  <ul>
+    <li>Event title (subscription name + "Renewal")</li>
+    <li>Event description (amount, currency, billing period, and optionally category)</li>
+  </ul>
+  <p>Depending on your settings, Subly may create a dedicated calendar (e.g., "Subly Subscriptions") or use your primary calendar.</p>
+
+  <h2>Data Sharing</h2>
+  <p>Subly does not sell your data and does not send your subscriptions to any third-party servers owned by the developer.</p>
+  <p>Subly may call third-party exchange rate APIs to fetch currency conversion rates. Those requests contain the selected base currency (e.g., <code>USD</code>) and no personally identifying information. Providers used include:</p>
+  <ul>
+    <li><code>open.er-api.com</code></li>
+    <li><code>api.exchangerate.host</code></li>
+  </ul>
+
+  <h2>Permissions</h2>
+  <ul>
+    <li><code>storage</code>: to save your subscriptions and settings locally</li>
+    <li><code>sidePanel</code>: to render the UI in the Chrome Side Panel</li>
+    <li><code>identity</code>: to perform Google OAuth when you enable Google integrations</li>
+  </ul>
+  <p>Host permissions include access to Google Calendar, Google Drive API endpoints and exchange rate providers.</p>
+
+  <h2>Your Choices</h2>
+  <ul>
+    <li>Disable the floating Google Calendar button in Settings.</li>
+    <li>Clear local data in Settings.</li>
+    <li>Choose whether to use Google Drive backup and Google Calendar sync.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>If you have questions about privacy, contact the developer via the support email listed on the Chrome Web Store listing.</p>
+</body>
+</html>
