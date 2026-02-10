@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Subly",
   "minimum_chrome_version": "114.0.0.0",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Local-first subscription manager in a Chrome Side Panel, with optional Google Calendar sync.",
   "icons": {
     "16": "icon-16.png",
@@ -19,7 +19,11 @@
       "128": "icon-128.png"
     }
   },
-  "permissions": ["sidePanel", "storage", "identity"],
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "identity"
+  ],
   "host_permissions": [
     "https://calendar.google.com/*",
     "https://www.googleapis.com/calendar/v3/*",
@@ -46,8 +50,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://calendar.google.com/*"],
-      "js": ["ext-content.js"],
+      "matches": [
+        "https://calendar.google.com/*"
+      ],
+      "js": [
+        "ext-content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { gsap } from 'gsap'
+import { logger } from '../lib/logger'
 import './PillNav.css'
 
 export type PillNavItem = {
@@ -116,7 +117,7 @@ export default function PillNav({
     window.addEventListener('resize', onResize)
 
     if ((document as any).fonts?.ready) {
-      ;(document as any).fonts.ready.then(layout).catch((e) => {
+      ;(document as any).fonts.ready.then(layout).catch((e: unknown) => {
         logger.debug('Font loading error during layout', { context: 'PillNav', error: e })
       })
     }

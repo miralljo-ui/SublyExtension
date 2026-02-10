@@ -53,6 +53,7 @@ const translations: Record<Language, TranslationDict> = {
       noUpcoming: 'No hay renovaciones en los próximos {{days}} días.',
       emptyHint: 'Añade suscripciones para ver tu agenda.',
       syncProgress: 'Progreso: {{ok}}/{{total}} ok · {{fail}} fail',
+      syncOAuthHint: 'Revisa Ajustes → Configuración de Google para ayuda sobre la autenticación.',
     },
     onboarding: {
       title: 'Bienvenido a Subly',
@@ -404,6 +405,7 @@ const translations: Record<Language, TranslationDict> = {
       noUpcoming: 'No renewals in the next {{days}} days.',
       emptyHint: 'Add subscriptions to see your agenda.',
       syncProgress: 'Progress: {{ok}}/{{total}} ok · {{fail}} fail',
+      syncOAuthHint: 'Check Settings → Google Setup for authentication help.',
     },
     onboarding: {
       title: 'Welcome to Subly',

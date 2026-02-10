@@ -319,8 +319,16 @@ export function Calendar() {
 
       setSubscriptions(updated)
       const baseMsg = t('subscriptions.syncAllDone', { ok, fail }) ?? `Sync: ${ok} ok, ${fail} fail`
-      if (fail > 0) toast.error(firstError ? `${baseMsg} (${firstError})` : baseMsg)
-      else toast.success(baseMsg)
+      if (fail > 0) {
+        const errorText = firstError ? `${baseMsg} (${firstError})` : baseMsg
+        // If it looks like an OAuth error, suggest checking Settings
+        const helpText = firstError?.toLowerCase().includes('oauth') || firstError?.toLowerCase().includes('client id')
+          ? `. ${t('calendar.syncOAuthHint') ?? 'Check Settings → Google Setup for configuration help.'}`
+          : ''
+        toast.error(errorText + helpText)
+      } else {
+        toast.success(baseMsg)
+      }
     } finally {
       setSyncBusy(false)
       // keep progress visible briefly
