@@ -1,8 +1,5 @@
+import { getAuthToken, isExtension } from './chromeAuth'
 import { logger } from './logger'
-
-function isExtension() {
-  return typeof chrome !== 'undefined' && !!chrome.identity
-}
 
 /**
  * Extract meaningful error message from OAuth error.
@@ -36,31 +33,19 @@ function getOAuthErrorMessage(err: chrome.runtime.LastError | undefined): string
   return `${msg || 'OAuth error'}. See OAUTH_SETUP.md for help.`
 }
 
-function getAuthToken(interactive: boolean): Promise<string> {
-  if (!isExtension()) throw new Error('Google auth requires Chrome Extension environment.')
-
-  return new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive }, (token) => {
-      const err = chrome.runtime.lastError
-      if (err) {
-        const friendlyMsg = getOAuthErrorMessage(err)
-        logger.error('OAuth token request failed', {
-          context: 'getAuthToken',
-          error: err,
-          details: { originalError: err.message },
-        })
-        reject(new Error(friendlyMsg))
-        return
-      }
-      if (!token) {
-        const msg = 'No OAuth token received. Try disconnecting and reconnecting in Settings.'
-        logger.error(msg, { context: 'getAuthToken' })
-        reject(new Error(msg))
-        return
-      }
-      resolve(token)
+async function getFriendlyAuthToken(interactive: boolean): Promise<string> {
+  try {
+    return await getAuthToken({
+      interactive,
+      errorMessage: getOAuthErrorMessage,
     })
-  })
+  } catch (e) {
+    logger.error('OAuth token request failed', {
+      context: 'getAuthToken',
+      error: e,
+    })
+    throw e
+  }
 }
 
 async function removeCachedToken(token: string): Promise<void> {
@@ -87,12 +72,15 @@ async function revokeToken(token: string): Promise<void> {
   }
 }
 
+/**
+ * Disconnect the user by revoking the current OAuth token and clearing cache.
+ */
 export async function disconnectGoogle(args?: { interactive?: boolean }): Promise<{ hadToken: boolean }> {
   const interactive = args?.interactive ?? false
 
   let token: string | undefined
   try {
-    token = await getAuthToken(interactive)
+    token = await getFriendlyAuthToken(interactive)
   } catch {
     return { hadToken: false }
   }

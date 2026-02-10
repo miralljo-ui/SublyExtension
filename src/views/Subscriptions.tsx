@@ -10,6 +10,8 @@ import GradientText from '../components/ui/GradientText'
 import { useStore } from '../store'
 import { useI18n } from '../lib/i18n'
 import { driveSaveAppStateJson } from '../lib/googleDrive'
+import { formatUserError } from '../lib/userErrors'
+import { useDebouncedValue } from '../lib/useDebouncedValue'
 
 const SUBSCRIPTIONS_TITLE_GRADIENT_COLORS = ['#22C55E', '#06B6D4', '#3B82F6']
 
@@ -94,11 +96,11 @@ export function SubscriptionsView() {
       // Auto-backup should never block user actions.
       if (driveAutoErrorShownRef.current) return
       driveAutoErrorShownRef.current = true
-      const msg = e instanceof Error ? e.message : String(e)
-      toast.error(
-        (t('drive.backupSaveFailed') ?? 'No se pudo guardar la copia en Google Drive.') +
-          (msg ? ` ${msg}` : ''),
-      )
+      toast.error(formatUserError(
+        t,
+        e,
+        t('drive.backupSaveFailed') ?? 'No se pudo guardar la copia en Google Drive.',
+      ))
     }
   }, [setSettings, state, t, toast])
 
@@ -126,6 +128,10 @@ export function SubscriptionsView() {
   const [filterPeriod, setFilterPeriod] = useState<'' | Period>('')
   const [filterMinPrice, setFilterMinPrice] = useState('')
   const [filterMaxPrice, setFilterMaxPrice] = useState('')
+
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 250)
+  const debouncedMinPrice = useDebouncedValue(filterMinPrice, 250)
+  const debouncedMaxPrice = useDebouncedValue(filterMaxPrice, 250)
 
   type SortColumn = 'name' | 'price' | 'startDate' | 'nextRenewal' | 'category'
   const [sort, setSort] = useState<{ column: SortColumn; direction: 'asc' | 'desc' }>({ column: 'nextRenewal', direction: 'asc' })
@@ -267,10 +273,11 @@ export function SubscriptionsView() {
       void (async () => {
         const result = await syncOne(next.id, true, { quiet: true })
         if (!result.ok) {
-          toast.error(
-            (t('subscriptions.syncFailed') ?? 'Error al sincronizar.') +
-              (result.error ? ` ${result.error}` : ''),
-          )
+          toast.error(formatUserError(
+            t,
+            result.error ?? '',
+            t('subscriptions.syncFailed') ?? 'Error al sincronizar.',
+          ))
         }
       })()
     }
@@ -327,11 +334,11 @@ export function SubscriptionsView() {
             }
           } catch {}
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          toast.error(
-            (t('subscriptions.calendarDeleteFailed') ?? 'No se pudo borrar el evento en Google Calendar.') +
-              (msg ? ` ${msg}` : ''),
-          )
+          toast.error(formatUserError(
+            t,
+            e,
+            t('subscriptions.calendarDeleteFailed') ?? 'No se pudo borrar el evento en Google Calendar.',
+          ))
         }
       })()
     }
@@ -548,7 +555,9 @@ export function SubscriptionsView() {
       }
 
       const baseMsg = t('subscriptions.syncAllDone', { ok, fail }) ?? `Sync: ${ok} ok, ${fail} fail`
-      if (fail > 0) toast.error(fail > 0 && firstError ? `${baseMsg} (${firstError})` : baseMsg)
+      if (fail > 0) {
+        toast.error(formatUserError(t, firstError ?? '', baseMsg))
+      }
       else toast.success(baseMsg)
     } finally {
       setSyncBusyAll(false)
@@ -687,19 +696,19 @@ export function SubscriptionsView() {
 
   const hasActiveFilters = useMemo(() => {
     return Boolean(
-      searchTerm.trim() ||
+      debouncedSearchTerm.trim() ||
       filterCategory.trim() ||
       filterCurrency.trim() ||
       filterPeriod ||
-      filterMinPrice.trim() ||
-      filterMaxPrice.trim(),
+      debouncedMinPrice.trim() ||
+      debouncedMaxPrice.trim(),
     )
-  }, [filterCategory, filterCurrency, filterMaxPrice, filterMinPrice, filterPeriod, searchTerm])
+  }, [debouncedMaxPrice, debouncedMinPrice, debouncedSearchTerm, filterCategory, filterCurrency, filterPeriod])
 
   const filtered = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase()
-    const min = filterMinPrice.trim() ? Number(filterMinPrice) : null
-    const max = filterMaxPrice.trim() ? Number(filterMaxPrice) : null
+    const query = debouncedSearchTerm.trim().toLowerCase()
+    const min = debouncedMinPrice.trim() ? Number(debouncedMinPrice) : null
+    const max = debouncedMaxPrice.trim() ? Number(debouncedMaxPrice) : null
 
     return enriched.filter(s => {
       if (filterCategory.trim()) {
@@ -728,7 +737,7 @@ export function SubscriptionsView() {
 
       return haystack.some(v => String(v || '').toLowerCase().includes(query))
     })
-  }, [enriched, filterCategory, filterCurrency, filterMaxPrice, filterMinPrice, filterPeriod, periodLabelMap, searchTerm])
+  }, [debouncedMaxPrice, debouncedMinPrice, debouncedSearchTerm, enriched, filterCategory, filterCurrency, filterPeriod, periodLabelMap])
 
   const toggleSort = useCallback((column: SortColumn) => {
     setSort(prev => {
@@ -1369,7 +1378,11 @@ export function SubscriptionsView() {
                     // Recreate the event by forcing creation (ignore old eventId)
                     const res = await syncOne(id, true, { forceCreate: true })
                     if (res.ok) toast.success(t('subscriptions.missingRecreated') ?? 'Evento recreado en Calendar.')
-                    else toast.error((t('subscriptions.syncFailed') ?? 'Error al sincronizar.') + (res.error ? ` ${res.error}` : ''))
+                    else toast.error(formatUserError(
+                      t,
+                      res.error ?? '',
+                      t('subscriptions.syncFailed') ?? 'Error al sincronizar.',
+                    ))
                   }}
                 >
                   {t('subscriptions.missingActionRecreate') ?? 'Recrear evento'}

@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import FaultyTerminal from './components/FaultyTerminal'
 import { OnboardingStepper } from './components/OnboardingStepper'
 import PillNav from './components/PillNav'
@@ -50,7 +51,14 @@ export default function App() {
         </header>
 
         <main className="mx-auto max-w-3xl px-4 py-4">
-          <Outlet />
+          <ErrorBoundary
+            resetKey={location.pathname}
+            title={t('common.error') ?? 'Error'}
+            message={t('common.errorBody') ?? 'Se produjo un error inesperado. Intenta recargar.'}
+            resetLabel={t('common.retry') ?? 'Reintentar'}
+          >
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

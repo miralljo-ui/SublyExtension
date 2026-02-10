@@ -8,6 +8,7 @@ import { driveLoadAppStateJson, driveSaveAppStateJson } from '../lib/googleDrive
 import { deleteSubscriptionsCalendar } from '../lib/googleCalendar'
 import { DEFAULT_SETTINGS, normalizeState } from '../lib/storage'
 import { disconnectGoogle } from '../lib/googleAuth'
+import { formatUserError } from '../lib/userErrors'
 import GradientText from '../components/ui/GradientText'
 import { ImportExport } from '../components/ImportExport'
 
@@ -350,8 +351,11 @@ export function Settings() {
 
       toast.success(t('drive.backupSaved') ?? 'Copia guardada en Google Drive.')
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      toast.error((t('drive.backupSaveFailed') ?? 'No se pudo guardar la copia en Google Drive.') + (msg ? ` ${msg}` : ''))
+      toast.error(formatUserError(
+        t,
+        e,
+        t('drive.backupSaveFailed') ?? 'No se pudo guardar la copia en Google Drive.',
+      ))
     } finally {
       setDriveBusy(null)
     }
@@ -392,8 +396,11 @@ export function Settings() {
 
           toast.success(t('drive.backupRestored') ?? 'Datos restaurados desde Google Drive.')
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          toast.error((t('drive.backupRestoreFailed') ?? 'No se pudo restaurar desde Google Drive.') + (msg ? ` ${msg}` : ''))
+          toast.error(formatUserError(
+            t,
+            e,
+            t('drive.backupRestoreFailed') ?? 'No se pudo restaurar desde Google Drive.',
+          ))
         } finally {
           setDriveBusy(null)
           closeConfirm()
@@ -420,8 +427,11 @@ export function Settings() {
           }
           toast.success(t('settings.googleDisconnectDone') ?? 'Desconectado. La próxima vez se pedirán permisos de nuevo.')
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          toast.error(msg || 'Disconnect failed')
+          toast.error(formatUserError(
+            t,
+            e,
+            t('settings.googleDisconnectFailed') ?? 'No se pudo desconectar.',
+          ))
         } finally {
           closeConfirm()
         }
@@ -492,8 +502,11 @@ export function Settings() {
             })
           }
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          toast.error((t('settings.deleteCalendarFailed') ?? 'No se pudo eliminar el calendario dedicado.') + (msg ? ` ${msg}` : ''))
+          toast.error(formatUserError(
+            t,
+            e,
+            t('settings.deleteCalendarFailed') ?? 'No se pudo eliminar el calendario dedicado.',
+          ))
         } finally {
           closeConfirm()
         }

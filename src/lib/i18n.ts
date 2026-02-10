@@ -40,6 +40,14 @@ const translations: Record<Language, TranslationDict> = {
       uncategorized: 'Sin categoría',
       other: 'Otros',
     },
+    errors: {
+      oauth: 'Error de autenticacion de Google.',
+      oauthHint: 'Revisa Ajustes -> Configuracion de Google.',
+      network: 'No hay conexion o la red fallo.',
+      networkHint: 'Comprueba tu conexion y vuelve a intentarlo.',
+      rateLimit: 'Limite de solicitudes alcanzado.',
+      rateLimitHint: 'Espera un momento e intentalo de nuevo.',
+    },
     nav: {
       dashboard: 'Resumen',
       subscriptions: 'Suscripciones',
@@ -170,6 +178,7 @@ const translations: Record<Language, TranslationDict> = {
       googleDisconnectConfirm: 'Esto desconectará Subly de tu cuenta de Google en este navegador. ¿Continuar?',
       googleDisconnectDone: 'Desconectado. La próxima vez se pedirán permisos de nuevo.',
       googleDisconnectNoToken: 'No hay sesión activa que desconectar.',
+      googleDisconnectFailed: 'No se pudo desconectar.',
 
       helpTitle: 'Ayuda',
       helpFaqTitle: 'FAQ',
@@ -392,6 +401,14 @@ const translations: Record<Language, TranslationDict> = {
       uncategorized: 'Uncategorized',
       other: 'Other',
     },
+    errors: {
+      oauth: 'Google authentication error.',
+      oauthHint: 'Check Settings -> Google configuration.',
+      network: 'Network error or offline.',
+      networkHint: 'Check your connection and try again.',
+      rateLimit: 'Rate limit reached.',
+      rateLimitHint: 'Wait a moment and try again.',
+    },
     nav: {
       dashboard: 'Dashboard',
       subscriptions: 'Subscriptions',
@@ -522,6 +539,7 @@ const translations: Record<Language, TranslationDict> = {
       googleDisconnectConfirm: 'This will disconnect Subly from your Google account in this browser. Continue?',
       googleDisconnectDone: 'Disconnected. Next time it will ask for permissions again.',
       googleDisconnectNoToken: 'No active session to disconnect.',
+      googleDisconnectFailed: 'Failed to disconnect.',
 
       helpTitle: 'Help',
       helpFaqTitle: 'FAQ',

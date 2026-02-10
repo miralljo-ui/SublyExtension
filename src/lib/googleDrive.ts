@@ -1,3 +1,5 @@
+import { getAuthToken, isExtension } from './chromeAuth'
+
 type DriveFile = {
   id: string
   name?: string
@@ -39,27 +41,9 @@ function shouldPurgeToken(status: number | undefined): boolean {
   return status === 401 || status === 403
 }
 
-function isExtension() {
-  return typeof chrome !== 'undefined' && !!chrome.identity
-}
-
-async function getAuthToken(interactive: boolean): Promise<string> {
+async function getDriveAuthToken(interactive: boolean): Promise<string> {
   if (!isExtension()) throw new Error('Google Drive backup requires Chrome Extension environment.')
-
-  return await new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive }, (token) => {
-      const err = chrome.runtime.lastError
-      if (err) {
-        reject(new Error(err.message || 'OAuth token error'))
-        return
-      }
-      if (!token) {
-        reject(new Error('No OAuth token received'))
-        return
-      }
-      resolve(token)
-    })
-  })
+  return await getAuthToken(interactive)
 }
 
 async function removeCachedToken(token: string): Promise<void> {
@@ -185,6 +169,9 @@ async function downloadBackupFile(token: string, fileId: string): Promise<{ json
   return { jsonText: res.text }
 }
 
+/**
+ * Save the app state JSON into Drive appDataFolder (create or update).
+ */
 export async function driveSaveAppStateJson(args: {
   json: string
   fileId?: string
@@ -196,7 +183,7 @@ export async function driveSaveAppStateJson(args: {
 
   let token: string | undefined
   try {
-    token = await getAuthToken(interactive)
+    token = await getDriveAuthToken(interactive)
 
     let fileId = args.fileId
     let modifiedTime: string | undefined
@@ -227,6 +214,9 @@ export async function driveSaveAppStateJson(args: {
   }
 }
 
+/**
+ * Load the app state JSON from Drive appDataFolder (by id or filename).
+ */
 export async function driveLoadAppStateJson(args: {
   fileId?: string
   fileName?: string
@@ -237,7 +227,7 @@ export async function driveLoadAppStateJson(args: {
 
   let token: string | undefined
   try {
-    token = await getAuthToken(interactive)
+    token = await getDriveAuthToken(interactive)
 
     let fileId = args.fileId
     let modifiedTime: string | undefined

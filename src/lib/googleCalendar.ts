@@ -1,3 +1,4 @@
+import { getAuthToken, isExtension } from './chromeAuth'
 import type { Period } from './types'
 
 /**
@@ -86,27 +87,9 @@ export function buildGoogleCalendarEventEditUrl(draft: CalendarEventDraft): stri
   return `${base}?${params.toString()}`
 }
 
-function isExtension() {
-  return typeof chrome !== 'undefined' && !!chrome.identity
-}
-
-async function getAuthToken(interactive: boolean): Promise<string> {
+async function getCalendarAuthToken(interactive: boolean): Promise<string> {
   if (!isExtension()) throw new Error('Google Calendar sync requires Chrome Extension environment.')
-
-  return await new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive }, (token) => {
-      const err = chrome.runtime.lastError
-      if (err) {
-        reject(new Error(err.message || 'OAuth token error'))
-        return
-      }
-      if (!token) {
-        reject(new Error('No OAuth token received'))
-        return
-      }
-      resolve(token)
-    })
-  })
+  return await getAuthToken(interactive)
 }
 
 async function removeCachedToken(token: string): Promise<void> {
@@ -181,12 +164,16 @@ function clampReminderMinutes(v: number): number {
   return i
 }
 
+/**
+ * Create or update a recurring all-day event for a subscription.
+ * Uses PATCH when `eventId` exists; falls back to create when missing or deleted.
+ */
 export async function upsertRecurringAllDayEvent(input: UpsertRecurringAllDayEventInput): Promise<GoogleCalendarEventLink> {
   const calendarId = input.calendarId ?? 'primary'
   const interactive = input.interactive ?? true
   let token = input.token
 
-  if (!token) token = await getAuthToken(interactive)
+  if (!token) token = await getCalendarAuthToken(interactive)
 
   const [y, m, d] = input.startDateYmd.split('-').map(Number)
   const start = new Date(y, (m ?? 1) - 1, d ?? 1)
@@ -276,10 +263,13 @@ export async function upsertRecurringAllDayEvent(input: UpsertRecurringAllDayEve
   }
 }
 
+/**
+ * Delete a Calendar event by id. Treats 404 as success.
+ */
 export async function deleteCalendarEvent(args: { calendarId?: string; eventId: string; token?: string; interactive?: boolean }): Promise<void> {
   const calendarId = args.calendarId ?? 'primary'
   const interactive = args.interactive ?? true
-  const token = args.token ?? await getAuthToken(interactive)
+  const token = args.token ?? await getCalendarAuthToken(interactive)
   try {
     await calendarApiRequest<void>({
       token,
@@ -308,11 +298,14 @@ type CalendarListResponse = {
 
 const SUBSCRIPTIONS_CALENDAR_SUMMARY = 'Subly Subscriptions'
 
+/**
+ * Ensure a dedicated calendar exists for subscription events and return its id.
+ */
 export async function ensureSubscriptionsCalendar(args?: { token?: string; interactive?: boolean; summary?: string }): Promise<string> {
   const interactive = args?.interactive ?? true
   const desiredSummary = String(args?.summary || SUBSCRIPTIONS_CALENDAR_SUMMARY).trim() || SUBSCRIPTIONS_CALENDAR_SUMMARY
   let token = args?.token
-  if (!token) token = await getAuthToken(interactive)
+  if (!token) token = await getCalendarAuthToken(interactive)
 
   try {
     const list = await calendarApiRequest<CalendarListResponse>({
@@ -354,12 +347,15 @@ export async function ensureSubscriptionsCalendar(args?: { token?: string; inter
   }
 }
 
+/**
+ * Delete the dedicated subscriptions calendar by id. Treats 404 as success.
+ */
 export async function deleteSubscriptionsCalendar(args?: { calendarId?: string; token?: string; interactive?: boolean }): Promise<void> {
   const calendarId = String(args?.calendarId || '').trim()
   if (!calendarId) throw new Error('Missing calendar id')
   const interactive = args?.interactive ?? true
   let token = args?.token
-  if (!token) token = await getAuthToken(interactive)
+  if (!token) token = await getCalendarAuthToken(interactive)
 
   try {
     await calendarApiRequest<void>({
