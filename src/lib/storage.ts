@@ -100,19 +100,45 @@ export function createId(): string {
 
 export function nextRenewalDate(startDate: string, period: Subscription['period'], from = new Date()): Date {
   const [y, m, d] = startDate.split('-').map(Number)
+  
+  // Validate month and day are in reasonable ranges
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return from
+  if (m < 1 || m > 12 || d < 1 || d > 31) return from
+  
   const base = new Date(y, (m ?? 1) - 1, d ?? 1)
   if (Number.isNaN(base.getTime())) return from
 
-  const addMonths = (date: Date, months: number) => {
-    const copy = new Date(date)
-    copy.setMonth(copy.getMonth() + months)
-    return copy
+  /**
+   * Safely add months to a date, handling end-of-month dates.
+   * Remembers the original day to restore it when possible.
+   * E.g., Jan 31 + 1 month = Feb 28/29, then + 1 month = Mar 31.
+   * See: https://stackoverflow.com/questions/5645058
+   */
+  const addMonths = (date: Date, months: number, originalDay: number): Date => {
+    let year = date.getFullYear()
+    let month = date.getMonth() + months
+    
+    // Handle month overflow
+    year += Math.floor(month / 12)
+    month = month % 12
+    
+    // Try to create date with the original day
+    let result = new Date(year, month, originalDay)
+    
+    // If day doesn't exist in target month, use last day of that month
+    if (result.getMonth() !== month) {
+      result = new Date(year, month + 1, 0)
+    }
+    
+    return result
   }
 
   const step = period === 'monthly' ? 1 : period === 'quarterly' ? 3 : period === 'semiannual' ? 6 : 12
+  const originalDay = base.getDate() // Remember the subscription's original day
   let cursor = new Date(base)
-  while (cursor.getTime() < from.getTime()) {
-    cursor = addMonths(cursor, step)
+  
+  while (cursor.getTime() <= from.getTime()) {
+    cursor = addMonths(cursor, step, originalDay)
   }
   return cursor
 }

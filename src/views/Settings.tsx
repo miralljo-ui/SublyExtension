@@ -180,7 +180,10 @@ export function Settings() {
                 try {
                   confirmState.onConfirm && confirmState.onConfirm()
                 } catch (e) {
-                  // ignore
+                  logger.warn('Confirm button onClick raised error', {
+                    context: 'ConfirmModal',
+                    error: e,
+                  })
                 }
               }}
             >
@@ -282,10 +285,18 @@ export function Settings() {
     try {
       await navigator.clipboard.writeText(text)
       toast.success(t('settings.helpCopied') ?? 'Diagnóstico copiado.')
-    } catch {
+    } catch (e) {
+      logger.debug('Diagnostic clipboard copy failed, falling back to prompt', {
+        context: 'copyDiagnostic',
+        error: e,
+      })
       try {
         window.prompt(t('settings.helpCopyFailed') ?? 'No se pudo copiar automáticamente. Copia el texto:', text)
-      } catch {
+      } catch (e2) {
+        logger.warn('Diagnostic clipboard fallback also failed', {
+          context: 'copyDiagnostic',
+          error: e2,
+        })
         toast.error(t('settings.helpCopyFailed') ?? 'No se pudo copiar automáticamente. Copia el texto manualmente.')
       }
     }
@@ -300,10 +311,12 @@ export function Settings() {
     try {
       await navigator.clipboard.writeText(trimmed)
       toast.success(t('settings.helpFeedbackCopied') ?? 'Comentario copiado.')
-    } catch {
+    } catch (e) {
+      logger.debug('Clipboard copy failed, falling back to prompt', { context: 'copyFeedback', error: e })
       try {
         window.prompt(t('settings.helpCopyFailed') ?? 'No se pudo copiar automáticamente. Copia el texto:', trimmed)
-      } catch {
+      } catch (e2) {
+        logger.warn('Clipboard fallback also failed', { context: 'copyFeedback', error: e2 })
         toast.error(t('settings.helpCopyFailed') ?? 'No se pudo copiar automáticamente. Copia el texto manualmente.')
       }
     }
@@ -471,8 +484,11 @@ export function Settings() {
             if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
               chrome.runtime.sendMessage({ type: 'RELOAD_CALENDAR' })
             }
-          } catch {
-            // ignore
+          } catch (e) {
+            logger.debug('Failed to send RELOAD_CALENDAR message to background', {
+              context: 'deleteSubscriptionsCalendar',
+              error: e,
+            })
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e)

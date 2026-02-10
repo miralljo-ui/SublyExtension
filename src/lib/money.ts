@@ -1,4 +1,5 @@
 import { MAJOR_CURRENCIES } from '../data/currencies'
+import { logger } from './logger'
 
 export type CurrencyDisplayMode = 'original' | 'convertToBase'
 
@@ -71,13 +72,28 @@ async function fetchRatesFromApi(base: string): Promise<RatesMap | null> {
       try {
         const res = await fetch(url, { headers })
         if (!res.ok) {
-          if (attempt === maxAttempts) return null
+          const msg = `Exchange rates API returned ${res.status}`
+          if (attempt === maxAttempts) {
+            logger.warn(msg, {
+              context: 'fetchRatesFromApi',
+              code: String(res.status),
+              details: { provider: url, finalAttempt: true },
+            })
+            return null
+          }
           await new Promise(r => setTimeout(r, baseDelay * attempt))
           continue
         }
         return await res.json()
-      } catch {
-        if (attempt === maxAttempts) return null
+      } catch (e) {
+        if (attempt === maxAttempts) {
+          logger.warn('Exchange rates API fetch failed after retries', {
+            context: 'fetchRatesFromApi',
+            error: e,
+            details: { provider: url, attempts: maxAttempts },
+          })
+          return null
+        }
         await new Promise(r => setTimeout(r, baseDelay * attempt))
       }
     }

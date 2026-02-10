@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Subscription } from '../lib/types'
+import { logger } from '../lib/logger'
 import { MAJOR_CURRENCIES } from '../lib/types'
 import { createId } from '../lib/storage'
 import { useI18n } from '../lib/i18n'
@@ -112,7 +113,8 @@ export function ImportExport({ items, onImport, exportButtonClass, importLabelCl
 
         onImport(Array.from(byId.values()))
         setStatus({ type: 'success', message: t('common.importedCount', { count: normalized.length }) ?? `Importadas: ${normalized.length}` })
-      } catch {
+      } catch (e) {
+        logger.warn('JSON import failed', { context: 'ImportExport', error: e })
         setStatus({ type: 'error', message: t('common.importFailed') ?? 'Importación fallida (JSON inválido o estructura incorrecta).' })
       }
     }

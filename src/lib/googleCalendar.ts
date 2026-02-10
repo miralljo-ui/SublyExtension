@@ -1,5 +1,20 @@
 import type { Period } from './types'
 
+/**
+ * Custom error for Google Calendar API responses.
+ * Captures HTTP status code to distinguish auth failures (401/403) from other errors.
+ */
+export class CalendarApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: string = '',
+  ) {
+    super(message)
+    this.name = 'CalendarApiError'
+  }
+}
+
 type CalendarEventDraft = {
   title: string
   details?: string
@@ -122,15 +137,13 @@ async function calendarApiRequest<T>(args: {
   const text = await res.text()
   if (!res.ok) {
     const msg = text || `${res.status} ${res.statusText}`
-    const err = new Error(msg)
-    ;(err as any).status = res.status
-    ;(err as any).body = text
-    throw err
+    throw new CalendarApiError(msg, res.status, text)
   }
   return (text ? (JSON.parse(text) as T) : (undefined as T))
 }
 
 function getHttpStatus(e: unknown): number | undefined {
+  if (e instanceof CalendarApiError) return e.status
   if (!e || typeof e !== 'object') return undefined
   const s = (e as any).status
   return typeof s === 'number' ? s : undefined
@@ -332,7 +345,11 @@ export async function ensureSubscriptionsCalendar(args?: { token?: string; inter
 
     return created.id
   } catch (e) {
-    await removeCachedToken(token)
+    // Only purge token if it's an auth error; other errors might be temporary.
+    const status = getHttpStatus(e)
+    if (shouldPurgeToken(status)) {
+      await removeCachedToken(token)
+    }
     throw e
   }
 }

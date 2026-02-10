@@ -59,8 +59,5 @@ See `PUBLISHING.md` for copy/paste permission and data-usage text.
 Suggested checklist before submitting:
 
 - Verify permissions are least-privilege (manifest `host_permissions`).
-- Ensure the injected Google Calendar button can be disabled (Settings → Extension).
+- Ensure the injected Google Calendar button can be disabled (Settings → Extension) and that automatic calendar sync can be turned off by the user.
 - Add store assets: icons, screenshots, short description, detailed description, and support email.
- - Verify permissions are least-privilege (manifest `host_permissions`).
- - Ensure the injected Google Calendar button can be disabled (Settings → Extension) and that automatic calendar sync can be turned off by the user.
- - Add store assets: icons, screenshots, short description, detailed description, and support email.

@@ -17,6 +17,28 @@ type DriveUploadResponse = {
   modifiedTime?: string
 }
 
+/**
+ * Error returned by Drive API with HTTP status code for better error handling.
+ */
+class DriveApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public body?: string,
+  ) {
+    super(message)
+    this.name = 'DriveApiError'
+  }
+}
+
+/**
+ * Check if a status code indicates an authentication/authorization failure.
+ * 401 = Unauthorized (token expired), 403 = Forbidden (insufficient scopes).
+ */
+function shouldPurgeToken(status: number | undefined): boolean {
+  return status === 401 || status === 403
+}
+
 function isExtension() {
   return typeof chrome !== 'undefined' && !!chrome.identity
 }
@@ -67,7 +89,7 @@ async function driveApiRequest<T>(args: {
   const text = await res.text()
   if (!res.ok) {
     const msg = text || `${res.status} ${res.statusText}`
-    throw new Error(msg)
+    throw new DriveApiError(res.status, msg, text)
   }
   return (text ? (JSON.parse(text) as T) : (undefined as T))
 }
@@ -93,7 +115,7 @@ async function driveMediaRequest(args: {
   const text = await res.text()
   if (!res.ok) {
     const msg = text || `${res.status} ${res.statusText}`
-    throw new Error(msg)
+    throw new DriveApiError(res.status, msg, text)
   }
 
   return { text, headers: res.headers }
@@ -195,6 +217,11 @@ export async function driveSaveAppStateJson(args: {
     const uploaded = await uploadBackupFile(token, fileId, args.json)
     return { fileId: uploaded.fileId, modifiedTime: uploaded.modifiedTime ?? modifiedTime }
   } catch (e) {
+    if (token && e instanceof DriveApiError && shouldPurgeToken(e.status)) {
+      await removeCachedToken(token)
+      const phrase = e.status === 401 ? 'Your Google authorization has expired.' : 'Google Drive access denied.'
+      throw new Error(`${phrase} Reconnect in Settings.`)
+    }
     if (token) await removeCachedToken(token)
     throw e
   }
@@ -225,6 +252,11 @@ export async function driveLoadAppStateJson(args: {
     const { jsonText } = await downloadBackupFile(token, fileId)
     return { fileId, modifiedTime, jsonText }
   } catch (e) {
+    if (token && e instanceof DriveApiError && shouldPurgeToken(e.status)) {
+      await removeCachedToken(token)
+      const phrase = e.status === 401 ? 'Your Google authorization has expired.' : 'Google Drive access denied.'
+      throw new Error(`${phrase} Reconnect in Settings.`)
+    }
     if (token) await removeCachedToken(token)
     throw e
   }

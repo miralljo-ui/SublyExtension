@@ -116,7 +116,9 @@ export default function PillNav({
     window.addEventListener('resize', onResize)
 
     if ((document as any).fonts?.ready) {
-      ;(document as any).fonts.ready.then(layout).catch(() => {})
+      ;(document as any).fonts.ready.then(layout).catch((e) => {
+        logger.debug('Font loading error during layout', { context: 'PillNav', error: e })
+      })
     }
 
     const menu = mobileMenuRef.current
