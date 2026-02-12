@@ -32,6 +32,46 @@ function annualCost(s: Subscription) {
   return (s.price * 12) / step
 }
 
+function linearProjection(values: number[], monthsForward: number) {
+  const clean = values.map(v => (Number.isFinite(v) ? v : 0))
+  const n = clean.length
+  if (n === 0) return Array.from({ length: monthsForward }, () => 0)
+  if (n === 1) return Array.from({ length: monthsForward }, () => Math.max(0, clean[0]))
+
+  let sumX = 0
+  let sumY = 0
+  let sumXY = 0
+  let sumXX = 0
+  for (let i = 0; i < n; i += 1) {
+    const x = i
+    const y = clean[i]
+    sumX += x
+    sumY += y
+    sumXY += x * y
+    sumXX += x * x
+  }
+  const denom = (n * sumXX) - (sumX * sumX)
+  const slope = denom === 0 ? 0 : ((n * sumXY) - (sumX * sumY)) / denom
+  const intercept = (sumY - (slope * sumX)) / n
+
+  return Array.from({ length: monthsForward }, (_, i) => {
+    const y = intercept + slope * (n + i)
+    return Math.max(0, y)
+  })
+}
+
+function makeFutureMonthLabels(startFrom: Date, count: number, locale: string) {
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(startFrom.getFullYear(), startFrom.getMonth() + i, 1)
+    return d.toLocaleString(locale, { month: 'short' })
+  })
+}
+
+function capitalizeFirst(value: string) {
+  if (!value) return value
+  return value[0].toUpperCase() + value.slice(1)
+}
+
 function parseYmdLocal(ymd: string): Date | null {
   const [y, m, d] = String(ymd).split('-').map(Number)
   const dt = new Date(y, (m ?? 1) - 1, d ?? 1)
@@ -67,6 +107,11 @@ export function Dashboard() {
 
   const [fxTick, setFxTick] = useState(0)
   const [fxStatus, setFxStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
+
+  const [trendWindow, setTrendWindow] = useState<3 | 6 | 12>(6)
+  const [projectionMonths, setProjectionMonths] = useState<3 | 6>(3)
+  const [compareA, setCompareA] = useState<string>('')
+  const [compareB, setCompareB] = useState<string>('')
 
   useEffect(() => {
     if (displayMode !== 'convertToBase') return
@@ -104,6 +149,31 @@ export function Dashboard() {
     if (displayMode === 'convertToBase') return [baseCurrency]
     return Array.from(new Set(state.subscriptions.map(s => (s.currency || 'USD').toUpperCase()))).sort((a, b) => a.localeCompare(b))
   }, [baseCurrency, displayMode, state.subscriptions])
+
+  const sortedSubscriptions = useMemo(() => {
+    return state.subscriptions.slice().sort((a, b) => a.name.localeCompare(b.name))
+  }, [state.subscriptions])
+
+  useEffect(() => {
+    if (sortedSubscriptions.length === 0) {
+      if (compareA) setCompareA('')
+      if (compareB) setCompareB('')
+      return
+    }
+
+    const first = sortedSubscriptions[0]?.id
+    const hasCompareA = sortedSubscriptions.some(s => s.id === compareA)
+    if (!compareA || !hasCompareA) {
+      setCompareA(first)
+      return
+    }
+
+    const hasCompareB = sortedSubscriptions.some(s => s.id === compareB)
+    const nextB = sortedSubscriptions.find(s => s.id !== compareA)?.id ?? compareA
+    if (!compareB || !hasCompareB || compareB === compareA) {
+      setCompareB(nextB)
+    }
+  }, [compareA, compareB, sortedSubscriptions])
 
   const totals = useMemo(() => {
     const byCurrency = new Map<string, number>()
@@ -234,6 +304,111 @@ export function Dashboard() {
     return { labels, byCurrency }
   }, [baseCurrency, currencies, displayMode, fxTick, state.subscriptions])
 
+  const advancedByCurrency = useMemo(() => {
+    const locale = language === 'es' ? 'es-ES' : 'en-US'
+    const fullLabels = monthlyProjectionByCurrency.labels
+    const now = new Date()
+    const fullMonthLabels = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1)
+      return capitalizeFirst(d.toLocaleString(locale, { month: 'long' }))
+    })
+    const out = new Map<string, {
+      trendLabels: string[]
+      trendValues: number[]
+      momRows: Array<{ label: string; value: number; delta: number; pct: number | null }>
+      lastMonthValue: number
+      lastMonthDelta: number
+      lastMonthPct: number | null
+      projectionLabels: string[]
+      projectionValues: number[]
+      projectionTotal: number
+    }>()
+
+    const nextMonthStart = new Date()
+    nextMonthStart.setDate(1)
+    nextMonthStart.setMonth(nextMonthStart.getMonth() + 1)
+
+    for (const cur of currencies) {
+      const series = monthlyProjectionByCurrency.byCurrency.get(cur) ?? []
+      const safeSeries = series.length ? series : Array.from({ length: 12 }, () => 0)
+      const trendValues = safeSeries.slice(-trendWindow)
+      const trendLabels = fullLabels.slice(-trendWindow)
+
+      const momRows: Array<{ label: string; value: number; delta: number; pct: number | null }> = []
+      const startIdx = Math.max(1, safeSeries.length - 3)
+      for (let i = startIdx; i < safeSeries.length; i += 1) {
+        const value = safeSeries[i]
+        const prev = safeSeries[i - 1] ?? 0
+        const delta = value - prev
+        const pct = prev === 0 ? null : (delta / prev) * 100
+        momRows.push({
+          label: fullMonthLabels[i] ?? fullLabels[i] ?? '',
+          value,
+          delta,
+          pct,
+        })
+      }
+
+      const last = safeSeries[safeSeries.length - 1] ?? 0
+      const prev = safeSeries[safeSeries.length - 2] ?? 0
+      const lastDelta = last - prev
+      const lastPct = prev === 0 ? null : (lastDelta / prev) * 100
+
+      const projectionValues = linearProjection(trendValues, projectionMonths)
+      const projectionLabels = makeFutureMonthLabels(nextMonthStart, projectionMonths, locale)
+      const projectionTotal = projectionValues.reduce((sum, v) => sum + v, 0)
+
+      out.set(cur, {
+        trendLabels,
+        trendValues,
+        momRows,
+        lastMonthValue: last,
+        lastMonthDelta: lastDelta,
+        lastMonthPct: lastPct,
+        projectionLabels,
+        projectionValues,
+        projectionTotal,
+      })
+    }
+
+    return out
+  }, [currencies, language, monthlyProjectionByCurrency.byCurrency, monthlyProjectionByCurrency.labels, projectionMonths, trendWindow])
+
+  const comparison = useMemo(() => {
+    const a = state.subscriptions.find(s => s.id === compareA)
+    const b = state.subscriptions.find(s => s.id === compareB)
+    if (!a || !b) return null
+
+    const aRaw = (a.currency || 'USD').toUpperCase()
+    const bRaw = (b.currency || 'USD').toUpperCase()
+    const sameCurrency = aRaw === bRaw
+    const targetCurrency = displayMode === 'convertToBase' ? baseCurrency : aRaw
+
+    const aMonthly = monthlyEquivalent(a)
+    const bMonthly = monthlyEquivalent(b)
+    const aAnnual = annualCost(a)
+    const bAnnual = annualCost(b)
+
+    const aShownMonthly = displayMode === 'convertToBase' ? convertCurrencySync(aMonthly, aRaw, baseCurrency) : aMonthly
+    const bShownMonthly = displayMode === 'convertToBase' ? convertCurrencySync(bMonthly, bRaw, baseCurrency) : bMonthly
+    const aShownAnnual = displayMode === 'convertToBase' ? convertCurrencySync(aAnnual, aRaw, baseCurrency) : aAnnual
+    const bShownAnnual = displayMode === 'convertToBase' ? convertCurrencySync(bAnnual, bRaw, baseCurrency) : bAnnual
+
+    const monthlyDelta = aShownMonthly - bShownMonthly
+    const annualDelta = aShownAnnual - bShownAnnual
+    const monthlyPct = bShownMonthly === 0 ? null : (monthlyDelta / bShownMonthly) * 100
+
+    return {
+      a,
+      b,
+      currency: targetCurrency,
+      sameCurrency,
+      monthly: { a: aShownMonthly, b: bShownMonthly, delta: monthlyDelta, pct: monthlyPct },
+      annual: { a: aShownAnnual, b: bShownAnnual, delta: annualDelta },
+      isComparable: displayMode === 'convertToBase' || sameCurrency,
+    }
+  }, [baseCurrency, compareA, compareB, displayMode, state.subscriptions])
+
   const annualTopByCurrency = useMemo(() => {
     const map = new Map<string, { label: string; value: number }[]>()
     for (const s of state.subscriptions) {
@@ -353,6 +528,215 @@ export function Dashboard() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
+            <GradientText>{t('dashboard.advancedSummaryTitle') ?? 'Panorama financiero'}</GradientText>
+          </div>
+        </div>
+
+        {currencies.length === 0 ? (
+          <div className="mt-2 text-sm text-slate-500">{t('dashboard.noSubscriptionsYet') ?? 'Sin suscripciones aún.'}</div>
+        ) : (
+          <div className="mt-3 space-y-4">
+            {currencies.map(cur => {
+              const advanced = advancedByCurrency.get(cur)
+              if (!advanced) return null
+              return (
+                <div key={`advanced-${cur}`} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <GradientText>{t('dashboard.currencyLabel', { cur }) ?? `Moneda: ${cur}`}</GradientText>
+                  </div>
+
+                  <div className="mt-2 space-y-3">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                          <GradientText>{t('dashboard.trendTitle') ?? 'Tendencia mensual'}</GradientText>
+                        </div>
+                        <label className="flex items-center gap-2 rounded-md border border-slate-200 px-2 py-1 text-sm dark:border-slate-800">
+                          <span className="text-slate-500 dark:text-slate-400">{t('dashboard.trendWindow') ?? 'Tendencia'}</span>
+                          <select
+                            className="bg-transparent text-sm font-semibold text-slate-700 focus:bg-slate-50 focus:outline-none dark:text-slate-200 dark:focus:bg-slate-800"
+                            value={trendWindow}
+                            onChange={e => setTrendWindow(Number(e.target.value) as 3 | 6 | 12)}
+                          >
+                            <option value={3}>3m</option>
+                            <option value={6}>6m</option>
+                            <option value={12}>12m</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="mt-2">
+                        <SimpleLineChart
+                          labels={advanced.trendLabels}
+                          values={advanced.trendValues}
+                          formatValue={(v) => formatCurrency(v, cur)}
+                          ariaLabel="Monthly trend"
+                        />
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                          <div className="text-slate-500 dark:text-slate-400">{t('dashboard.lastMonth') ?? 'Último mes'}</div>
+                          <div className="font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(advanced.lastMonthValue, cur)}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                          <div className="text-slate-500 dark:text-slate-400">{t('dashboard.momChange') ?? 'Cambio MoM'}</div>
+                          <div className={`font-semibold ${advanced.lastMonthDelta >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {advanced.lastMonthDelta >= 0 ? '+' : ''}{formatCurrency(advanced.lastMonthDelta, cur)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                          <div className="text-slate-500 dark:text-slate-400">{t('dashboard.momPct') ?? '% MoM'}</div>
+                          <div className="font-semibold text-slate-800 dark:text-slate-100">
+                            {advanced.lastMonthPct === null ? (t('common.none') ?? '—') : `${advanced.lastMonthPct >= 0 ? '+' : ''}${advanced.lastMonthPct.toFixed(1)}%`}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 rounded-lg border border-dashed border-slate-200 p-2 text-xs dark:border-slate-800">
+                        <div className="mb-1 font-semibold text-slate-600 dark:text-slate-300">{t('dashboard.momComparisons') ?? 'Comparativas mes a mes'}</div>
+                        <div className="grid gap-1">
+                          {advanced.momRows.map(row => (
+                            <div key={`mom-${cur}-${row.label}`} className="flex items-center justify-between">
+                              <div className="text-slate-500 dark:text-slate-400">{row.label}</div>
+                              <div className="flex items-center gap-2 text-right">
+                                <span className="font-semibold text-slate-700 dark:text-slate-200">{formatCurrency(row.value, cur)}</span>
+                                <span className={`text-[11px] font-semibold ${row.delta >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                  {row.delta >= 0 ? '+' : ''}{formatCurrency(row.delta, cur)}
+                                  {row.pct === null ? '' : ` (${row.pct >= 0 ? '+' : ''}${row.pct.toFixed(1)}%)`}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                          <GradientText>{t('dashboard.projectionTitle') ?? 'Proyección de gasto'}</GradientText>
+                        </div>
+                        <label className="flex items-center gap-2 rounded-md border border-slate-200 px-2 py-1 text-sm dark:border-slate-800">
+                          <span className="text-slate-500 dark:text-slate-400">{t('dashboard.projectionWindow') ?? 'Proyección'}</span>
+                          <select
+                            className="bg-transparent text-sm font-semibold text-slate-700 focus:bg-slate-50 focus:outline-none dark:text-slate-200 dark:focus:bg-slate-800"
+                            value={projectionMonths}
+                            onChange={e => setProjectionMonths(Number(e.target.value) as 3 | 6)}
+                          >
+                            <option value={3}>3m</option>
+                            <option value={6}>6m</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="mt-2">
+                        <SimpleLineChart
+                          labels={advanced.projectionLabels}
+                          values={advanced.projectionValues}
+                          formatValue={(v) => formatCurrency(v, cur)}
+                          ariaLabel="Projection"
+                        />
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                          <div className="text-slate-500 dark:text-slate-400">{t('dashboard.nextMonthProjection') ?? 'Próximo mes'}</div>
+                          <div className="font-semibold text-slate-800 dark:text-slate-100">
+                            {formatCurrency(advanced.projectionValues[0] ?? 0, cur)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                          <div className="text-slate-500 dark:text-slate-400">{t('dashboard.projectionTotal') ?? `Total ${projectionMonths}m`}</div>
+                          <div className="font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(advanced.projectionTotal, cur)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <GradientText>{t('dashboard.subscriptionCompareTitle') ?? 'Comparativa entre suscripciones'}</GradientText>
+          </div>
+
+          {sortedSubscriptions.length < 2 ? (
+            <div className="mt-2 text-sm text-slate-500">{t('dashboard.needMoreSubs') ?? 'Añade al menos dos suscripciones para comparar.'}</div>
+          ) : (
+            <div className="mt-3 grid gap-3 lg:grid-cols-[1.2fr_1fr]">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('dashboard.compareA') ?? 'Suscripción A'}
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                    value={compareA}
+                    onChange={e => setCompareA(e.target.value)}
+                  >
+                    {sortedSubscriptions.map(s => (
+                      <option key={`compare-a-${s.id}`} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('dashboard.compareB') ?? 'Suscripción B'}
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                    value={compareB}
+                    onChange={e => setCompareB(e.target.value)}
+                  >
+                    {sortedSubscriptions.map(s => (
+                      <option key={`compare-b-${s.id}`} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-900">
+                {!comparison ? (
+                  <div className="text-slate-500">{t('dashboard.comparePlaceholder') ?? 'Selecciona dos suscripciones para comparar.'}</div>
+                ) : !comparison.isComparable ? (
+                  <div className="text-slate-500">
+                    {t('dashboard.compareDifferentCurrencyHint') ?? 'Las suscripciones tienen monedas distintas. Activa “convertir a moneda base” para comparar.'}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{comparison.a.name} vs {comparison.b.name}</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                        <div className="text-slate-500 dark:text-slate-400">{t('dashboard.monthlyCost') ?? 'Mensual'}</div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(comparison.monthly.a, comparison.currency)}</div>
+                      </div>
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                        <div className="text-slate-500 dark:text-slate-400">{t('dashboard.monthlyCost') ?? 'Mensual'}</div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(comparison.monthly.b, comparison.currency)}</div>
+                      </div>
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                        <div className="text-slate-500 dark:text-slate-400">{t('dashboard.annualCost') ?? 'Anual'}</div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(comparison.annual.a, comparison.currency)}</div>
+                      </div>
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                        <div className="text-slate-500 dark:text-slate-400">{t('dashboard.annualCost') ?? 'Anual'}</div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(comparison.annual.b, comparison.currency)}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-xs dark:border-slate-800 dark:bg-slate-950/40">
+                      <div className="text-slate-500 dark:text-slate-400">{t('dashboard.diffLabel') ?? 'Diferencia (A - B)'}</div>
+                      <div className={`font-semibold ${comparison.monthly.delta >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        {comparison.monthly.delta >= 0 ? '+' : ''}{formatCurrency(comparison.monthly.delta, comparison.currency)}
+                        {comparison.monthly.pct === null ? '' : ` (${comparison.monthly.pct >= 0 ? '+' : ''}${comparison.monthly.pct.toFixed(1)}%)`}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="text-base font-extrabold text-slate-700 dark:text-slate-200 sm:text-lg">
           <GradientText>{t('dashboard.chartsTitle') ?? 'Gráficos'}</GradientText>
         </div>
@@ -361,13 +745,14 @@ export function Dashboard() {
         ) : (
           <div className="mt-3 space-y-4">
             {currencies.map(cur => {
-              const lineValues = monthlyProjectionByCurrency.byCurrency.get(cur) ?? []
               const barItems = annualTopByCurrency.get(cur) ?? []
               const categoryItems = monthlyByCategoryByCurrency.get(cur) ?? []
               const pieItems = monthlyDistributionByCurrency.get(cur) ?? []
               return (
                 <div key={cur} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
-                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t('dashboard.currencyLabel', { cur }) ?? `Moneda: ${cur}`}</div>
+                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <GradientText>{t('dashboard.currencyLabel', { cur }) ?? `Moneda: ${cur}`}</GradientText>
+                  </div>
 
                   {(() => {
                     const ins = insightsByCurrency.get(cur)
@@ -395,52 +780,6 @@ export function Dashboard() {
                   })()}
 
                   <div className="mt-3 space-y-3">
-                    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-base font-bold text-slate-700 dark:text-slate-200">
-                          <GradientText>{t('dashboard.projectionTitle') ?? 'Proyección mensual (últimos 12 meses)'}</GradientText>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-                            onClick={() => {
-                              const el = chartElsRef.current.get(`${cur}:line`)
-                              if (!el) return
-                              void exportElementToPng(el, `monthly-${cur}.png`)
-                            }}
-                          >
-                            PNG
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-                            onClick={() => {
-                              const rows: Array<Array<string | number>> = [[
-                                t('dashboard.csvMonth') ?? 'Month',
-                                t('dashboard.csvAmount') ?? 'Amount',
-                                t('dashboard.csvCurrency') ?? 'Currency',
-                              ]]
-                              for (let i = 0; i < monthlyProjectionByCurrency.labels.length; i++) {
-                                rows.push([monthlyProjectionByCurrency.labels[i], lineValues[i] ?? 0, cur])
-                              }
-                              exportRowsToCsv(rows, `monthly-${cur}.csv`)
-                            }}
-                          >
-                            CSV
-                          </button>
-                        </div>
-                      </div>
-                      <div ref={setChartEl(`${cur}:line`)} className="mt-2">
-                        <SimpleLineChart
-                          ariaLabel={`Proyección mensual ${cur}`}
-                          labels={monthlyProjectionByCurrency.labels}
-                          values={lineValues}
-                          formatValue={v => formatCurrency(v, cur)}
-                        />
-                      </div>
-                    </div>
-
                     <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-base font-bold text-slate-700 dark:text-slate-200">
