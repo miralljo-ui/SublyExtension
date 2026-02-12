@@ -645,7 +645,9 @@ export function Dashboard() {
                           </div>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
-                          <div className="text-slate-500 dark:text-slate-400">{t('dashboard.projectionTotal') ?? `Total ${projectionMonths}m`}</div>
+                          <div className="text-slate-500 dark:text-slate-400">
+                            {t('dashboard.projectionTotal', { months: projectionMonths }) ?? `Total ${projectionMonths}m`}
+                          </div>
                           <div className="font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(advanced.projectionTotal, cur)}</div>
                         </div>
                       </div>
