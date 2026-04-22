@@ -16,7 +16,23 @@ export const DEFAULT_SETTINGS: AppSettings = {
 }
 
 export function normalizeState(input: Partial<AppState> | null | undefined): AppState {
-  const subscriptions = Array.isArray(input?.subscriptions) ? input!.subscriptions : []
+  const rawSubscriptions = Array.isArray(input?.subscriptions) ? input!.subscriptions : []
+  const subscriptions = rawSubscriptions.map((sub) => {
+    const list = [
+      ...(Array.isArray(sub?.categories) ? sub.categories : []),
+      typeof sub?.category === 'string' ? sub.category : '',
+    ]
+      .map(v => String(v || '').trim())
+      .filter(Boolean)
+
+    const uniqueCategories = Array.from(new Set(list))
+
+    return {
+      ...sub,
+      categories: uniqueCategories.length ? uniqueCategories : undefined,
+      category: uniqueCategories[0] ?? undefined,
+    }
+  })
   const rawSettings = (input as AppState | undefined)?.settings
   const language = rawSettings?.language === 'en' ? 'en' : 'es'
   const display = rawSettings?.currencyDisplayMode === 'convertToBase' ? 'convertToBase' : 'original'

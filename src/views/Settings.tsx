@@ -558,11 +558,11 @@ export function Settings() {
 
             <label className="text-sm">
               <div className="mb-1 font-semibold text-slate-200">{t('settings.baseCurrency') ?? 'Moneda base'}</div>
+              <div className="mb-1 text-xs text-slate-400">{t('settings.baseCurrencyDefaultHint') ?? 'Se usa también como moneda por defecto para nuevas suscripciones.'}</div>
               <select
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 disabled:opacity-60"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
                 value={state.settings.baseCurrency}
                 onChange={e => setBaseCurrency(e.target.value)}
-                disabled={state.settings.currencyDisplayMode !== 'convertToBase'}
               >
                 {MAJOR_CURRENCIES.map(c => (
                   <option key={c.code} value={c.code}>

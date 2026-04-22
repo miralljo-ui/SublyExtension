@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Subly",
   "minimum_chrome_version": "114.0.0.0",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Local-first subscription manager in a Chrome Side Panel, with optional Google Calendar sync.",
   "icons": {
     "16": "icon-16.png",
@@ -31,7 +31,7 @@
     "https://open.er-api.com/*"
   ],
   "oauth2": {
-    "client_id": "297517817732-ji5a0of4i995otdrtoajn9cftfih20fb.apps.googleusercontent.com",
+    "client_id": "UNCONFIGURED_PROD_CLIENT_ID",
     "scopes": [
       "https://www.googleapis.com/auth/calendar",
       "https://www.googleapis.com/auth/drive.appdata"

@@ -482,9 +482,12 @@ export function OnboardingStepper() {
           <button
             type="button"
             className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
-            onClick={() => navigate('/settings')}
+            onClick={() => {
+              complete()
+              navigate('/subscriptions?action=create')
+            }}
           >
-            {t('onboarding.goSettings') ?? 'Ir a Ajustes'}
+            {t('onboarding.goAddSubscription') ?? 'Añadir primera suscripción'}
           </button>
         </div>
       </Step>

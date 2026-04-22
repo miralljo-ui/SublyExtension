@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { MAJOR_CURRENCIES } from '../lib/types'
 import type { Period, Subscription } from '../lib/types'
 import { createId, nextRenewalDate } from '../lib/storage'
@@ -42,12 +43,27 @@ function isValidYmd(ymd: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(ymd || '').trim())
 }
 
+function normalizeCategories(values: unknown[]) {
+  const cleaned = values
+    .map(v => String(v || '').trim())
+    .filter(Boolean)
+
+  return Array.from(new Set(cleaned))
+}
+
+function getSubscriptionCategories(s: Subscription) {
+  return normalizeCategories([
+    ...(Array.isArray(s.categories) ? s.categories : []),
+    s.category ?? '',
+  ])
+}
+
 function computeSyncSignature(subscriptions: Subscription[]) {
   return JSON.stringify(
     subscriptions.map(s => ({
       id: s.id,
       name: s.name,
-      category: s.category,
+      categories: getSubscriptionCategories(s),
       price: s.price,
       currency: s.currency,
       period: s.period,
@@ -58,6 +74,8 @@ function computeSyncSignature(subscriptions: Subscription[]) {
 }
 
 export function SubscriptionsView() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const { state, setSubscriptions, setSettings } = useStore()
   const { t, language } = useI18n()
   const toast = useToast()
@@ -123,7 +141,8 @@ export function SubscriptionsView() {
 
   const [searchTerm, setSearchTerm] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [filterCategory, setFilterCategory] = useState('')
+  const [filterCategories, setFilterCategories] = useState<string[]>([])
+  const [groupByCategory, setGroupByCategory] = useState(false)
   const [filterCurrency, setFilterCurrency] = useState('')
   const [filterPeriod, setFilterPeriod] = useState<'' | Period>('')
   const [filterMinPrice, setFilterMinPrice] = useState('')
@@ -142,11 +161,14 @@ export function SubscriptionsView() {
   )
 
   const [name, setName] = useState('')
-  const [category, setCategory] = useState('')
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [customCategory, setCustomCategory] = useState('')
   const [price, setPrice] = useState('')
   const [currency, setCurrency] = useState('USD')
   const [period, setPeriod] = useState<Period>('monthly')
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10))
+
+  const [detailId, setDetailId] = useState<string | null>(null)
 
   const [useCustomReminder, setUseCustomReminder] = useState(false)
   const [customReminderDaysBefore, setCustomReminderDaysBefore] = useState(1)
@@ -167,9 +189,10 @@ export function SubscriptionsView() {
   function resetForm() {
     setEditingId(null)
     setName('')
-    setCategory('')
+    setSelectedCategories([])
+    setCustomCategory('')
     setPrice('')
-    setCurrency('USD')
+    setCurrency((settingsRef.current.baseCurrency || 'USD').toUpperCase())
     setPeriod('monthly')
     setStartDate(new Date().toISOString().slice(0, 10))
 
@@ -191,7 +214,8 @@ export function SubscriptionsView() {
   function loadForEdit(s: Subscription) {
     setEditingId(s.id)
     setName(s.name)
-    setCategory(s.category ?? '')
+    setSelectedCategories(getSubscriptionCategories(s))
+    setCustomCategory('')
     setPrice(String(s.price))
     const normalized = String(s.currency ?? '').trim().toUpperCase()
     const allowed = MAJOR_CURRENCIES.some(c => c.code === normalized)
@@ -222,7 +246,7 @@ export function SubscriptionsView() {
     if (!period) return
     if (!isValidYmd(startDate)) return
 
-    const cat = category.trim()
+    const categoryList = normalizeCategories(selectedCategories)
 
     const isEdit = Boolean(editingId)
     const existing = editingId ? state.subscriptions.find(s => s.id === editingId) : undefined
@@ -239,7 +263,8 @@ export function SubscriptionsView() {
       ...existing,
       id: editingId ?? createId(),
       name: trimmed,
-      category: cat ? cat : undefined,
+      categories: categoryList.length ? categoryList : undefined,
+      category: categoryList[0] ?? undefined,
       price: parseMoney(price),
       currency,
       period,
@@ -407,8 +432,8 @@ export function SubscriptionsView() {
         `${t('subscriptions.detailsAmount') ?? 'Importe'}: ${formatCurrency(shownAmount, shownCurrency)}`,
         `${t('subscriptions.detailsPeriod') ?? 'Periodo'}: ${s.period}`,
       ]
-      const cat = String(s.category || '').trim()
-      if (cat) detailsLines.push(`${t('subscriptions.filterCategory') ?? 'Categoría'}: ${cat}`)
+      const cats = getSubscriptionCategories(s)
+      if (cats.length) detailsLines.push(`${t('subscriptions.filterCategory') ?? 'Categoría'}: ${cats.join(', ')}`)
 
       // If an existing event lives in a different calendar, migrate it by deleting the old one
       // and creating a new event in the target calendar.
@@ -662,8 +687,15 @@ export function SubscriptionsView() {
       if (s.dueSoon) dueSoonCount += 1
       if (!nextDue || s.nextRenewal.getTime() < nextDue.getTime()) nextDue = s.nextRenewal
 
-      const cat = String(s.category || '').trim() || (t('common.uncategorized') ?? 'Sin categoría')
-      totalsByCategory.set(cat, (totalsByCategory.get(cat) ?? 0) + s.monthlyEqBase)
+      const cats = getSubscriptionCategories(s)
+      if (cats.length === 0) {
+        const uncategorized = t('common.uncategorized') ?? 'Sin categoría'
+        totalsByCategory.set(uncategorized, (totalsByCategory.get(uncategorized) ?? 0) + s.monthlyEqBase)
+      } else {
+        for (const cat of cats) {
+          totalsByCategory.set(cat, (totalsByCategory.get(cat) ?? 0) + s.monthlyEqBase)
+        }
+      }
     }
 
     let topCategory: null | { label: string; percent: number } = null
@@ -686,7 +718,7 @@ export function SubscriptionsView() {
   }, [enriched, state.subscriptions.length, t])
 
   const clearFilters = useCallback(() => {
-    setFilterCategory('')
+    setFilterCategories([])
     setFilterCurrency('')
     setFilterPeriod('')
     setFilterMinPrice('')
@@ -697,13 +729,13 @@ export function SubscriptionsView() {
   const hasActiveFilters = useMemo(() => {
     return Boolean(
       debouncedSearchTerm.trim() ||
-      filterCategory.trim() ||
+      filterCategories.length > 0 ||
       filterCurrency.trim() ||
       filterPeriod ||
       debouncedMinPrice.trim() ||
       debouncedMaxPrice.trim(),
     )
-  }, [debouncedMaxPrice, debouncedMinPrice, debouncedSearchTerm, filterCategory, filterCurrency, filterPeriod])
+  }, [debouncedMaxPrice, debouncedMinPrice, debouncedSearchTerm, filterCategories, filterCurrency, filterPeriod])
 
   const filtered = useMemo(() => {
     const query = debouncedSearchTerm.trim().toLowerCase()
@@ -711,9 +743,10 @@ export function SubscriptionsView() {
     const max = debouncedMaxPrice.trim() ? Number(debouncedMaxPrice) : null
 
     return enriched.filter(s => {
-      if (filterCategory.trim()) {
-        const cat = String(s.category || '').trim()
-        if (cat.toLowerCase() !== filterCategory.trim().toLowerCase()) return false
+      if (filterCategories.length > 0) {
+        const cats = getSubscriptionCategories(s).map(v => v.toLowerCase())
+        const hasMatch = filterCategories.some(filter => cats.includes(filter.toLowerCase()))
+        if (!hasMatch) return false
       }
       if (filterCurrency.trim()) {
         if (s.rawCurrency !== filterCurrency.trim().toUpperCase()) return false
@@ -727,7 +760,7 @@ export function SubscriptionsView() {
       if (!query) return true
       const haystack = [
         s.name,
-        s.category,
+        getSubscriptionCategories(s).join(' '),
         s.rawCurrency,
         s.period,
         periodLabelMap[s.period],
@@ -737,7 +770,7 @@ export function SubscriptionsView() {
 
       return haystack.some(v => String(v || '').toLowerCase().includes(query))
     })
-  }, [debouncedMaxPrice, debouncedMinPrice, debouncedSearchTerm, enriched, filterCategory, filterCurrency, filterPeriod, periodLabelMap])
+  }, [debouncedMaxPrice, debouncedMinPrice, debouncedSearchTerm, enriched, filterCategories, filterCurrency, filterPeriod, periodLabelMap])
 
   const toggleSort = useCallback((column: SortColumn) => {
     setSort(prev => {
@@ -766,8 +799,8 @@ export function SubscriptionsView() {
         case 'startDate':
           return (parseStart(a.startDate) - parseStart(b.startDate)) * direction
         case 'category': {
-          const ac = String(a.category || '').trim() || (t('common.uncategorized') ?? 'Sin categoría')
-          const bc = String(b.category || '').trim() || (t('common.uncategorized') ?? 'Sin categoría')
+          const ac = getSubscriptionCategories(a).join(', ') || (t('common.uncategorized') ?? 'Sin categoría')
+          const bc = getSubscriptionCategories(b).join(', ') || (t('common.uncategorized') ?? 'Sin categoría')
           return collator.compare(ac, bc) * direction
         }
         case 'nextRenewal':
@@ -778,6 +811,67 @@ export function SubscriptionsView() {
 
     return [...filtered].sort(compare)
   }, [filtered, sort.column, sort.direction])
+
+  const availableCategoryFilters = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of enriched) {
+      for (const cat of getSubscriptionCategories(s)) set.add(cat)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [enriched])
+
+  const groupedByCategory = useMemo(() => {
+    const map = new Map<string, typeof sorted>()
+    const uncategorized = t('common.uncategorized') ?? 'Sin categoría'
+
+    for (const sub of sorted) {
+      const cats = getSubscriptionCategories(sub)
+      const keys = cats.length ? cats : [uncategorized]
+      for (const key of keys) {
+        const list = map.get(key)
+        if (list) list.push(sub)
+        else map.set(key, [sub])
+      }
+    }
+
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [sorted, t])
+
+  const detailSubscription = useMemo(
+    () => state.subscriptions.find(s => s.id === detailId) ?? null,
+    [detailId, state.subscriptions],
+  )
+
+  const detailNextRenewal = useMemo(() => {
+    if (!detailSubscription) return null
+    return nextRenewalDate(detailSubscription.startDate, detailSubscription.period, new Date())
+  }, [detailSubscription])
+
+  useEffect(() => {
+    if (!location.search) return
+    const params = new URLSearchParams(location.search)
+    if (params.get('action') !== 'create') return
+    openCreateModal()
+    params.delete('action')
+    const nextSearch = params.toString()
+    navigate({ pathname: '/subscriptions', search: nextSearch ? `?${nextSearch}` : '' }, { replace: true })
+  }, [location.search, navigate])
+
+  function addCustomCategory() {
+    const value = customCategory.trim()
+    if (!value) return
+    setSelectedCategories(prev => normalizeCategories([...prev, value]))
+    setCustomCategory('')
+  }
+
+  function toggleCategorySelection(value: string) {
+    const normalized = String(value || '').trim()
+    if (!normalized) return
+    setSelectedCategories(prev => {
+      if (prev.includes(normalized)) return prev.filter(v => v !== normalized)
+      return normalizeCategories([...prev, normalized])
+    })
+  }
 
   const SortHeaderButton = ({ column, label }: { column: SortColumn; label: string }) => {
     const isActive = sort.column === column
@@ -811,21 +905,96 @@ export function SubscriptionsView() {
   }
 
   useEffect(() => {
-    if (!isModalOpen) return
+    if (!isModalOpen && !detailSubscription) return
 
     const t = window.setTimeout(() => {
       nameInputRef.current?.focus()
     }, 0)
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeModal()
+      if (e.key !== 'Escape') return
+      if (isModalOpen) closeModal()
+      if (detailSubscription) setDetailId(null)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => {
       window.clearTimeout(t)
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [isModalOpen])
+  }, [detailSubscription, isModalOpen])
+
+  const renderSubscriptionRow = (s: typeof sorted[number], keyPrefix?: string) => {
+    const shownCurrency = displayMode === 'convertToBase' ? baseCurrency : s.rawCurrency
+    const shownAmount = displayMode === 'convertToBase' ? convertCurrencySync(s.price, s.rawCurrency, baseCurrency) : s.price
+    const categoryText = getSubscriptionCategories(s).join(', ')
+
+    return (
+      <tr
+        key={keyPrefix ? `${keyPrefix}-${s.id}` : s.id}
+        className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30"
+        onDoubleClick={() => setDetailId(s.id)}
+      >
+        <td className="px-2 py-1.5 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <div className="min-w-0 truncate font-semibold text-slate-900 dark:text-white">{s.name}</div>
+            {s.dueSoon ? (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                {t('subscriptions.dueSoon') ?? 'Pronto'}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-0.5 whitespace-nowrap text-center text-[11px] text-slate-500 dark:text-slate-400">
+            {periodLabelMap[s.period]}
+          </div>
+        </td>
+        <td className="px-2 py-1.5 text-center font-semibold text-slate-900 dark:text-white">
+          {formatCurrency(shownAmount, shownCurrency)}
+        </td>
+        <td className="px-2 py-1.5 whitespace-nowrap text-center text-slate-600 dark:text-slate-300">
+          {new Date(s.startDate).toLocaleDateString(localeForLanguage(language))}
+        </td>
+        <td className="px-2 py-1.5 whitespace-nowrap text-center text-slate-600 dark:text-slate-300">
+          {s.nextRenewal.toLocaleDateString(localeForLanguage(language))}
+        </td>
+        <td className="px-2 py-1.5 truncate text-center text-slate-600 dark:text-slate-300">
+          {categoryText || (t('common.uncategorized') ?? 'Sin categoría')}
+        </td>
+        <td className="py-1.5">
+          <div className="flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              aria-label={t('common.edit') ?? 'Editar'}
+              title={t('common.edit') ?? 'Editar'}
+              className="inline-flex items-center justify-center rounded-md bg-amber-600/80 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-500/80"
+              onClick={() => loadForEdit(s)}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+              </svg>
+              <span className="sr-only">{t('common.edit') ?? 'Editar'}</span>
+            </button>
+            <button
+              type="button"
+              aria-label={t('common.delete') ?? 'Eliminar'}
+              title={t('common.delete') ?? 'Eliminar'}
+              className="inline-flex items-center justify-center rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-500"
+              onClick={() => remove(s.id)}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M6 6l1 14h10l1-14" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+              </svg>
+              <span className="sr-only">{t('common.delete') ?? 'Eliminar'}</span>
+            </button>
+          </div>
+        </td>
+      </tr>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -992,18 +1161,28 @@ export function SubscriptionsView() {
           </div>
         </div>
 
+        <label className="mt-3 inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={groupByCategory}
+            onChange={e => setGroupByCategory(e.target.checked)}
+          />
+          <span>{t('subscriptions.groupByCategory') ?? 'Agrupar por categorías'}</span>
+        </label>
+
         {filtersOpen ? (
           <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <label className="text-sm">
                 <div className="mb-1 font-semibold">{t('subscriptions.filterCategory') ?? 'Categoría'}</div>
                 <select
+                  multiple
                   className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-                  value={filterCategory}
-                  onChange={e => setFilterCategory(e.target.value)}
+                  value={filterCategories}
+                  onChange={e => setFilterCategories(Array.from(e.target.selectedOptions).map(option => option.value))}
                 >
-                  <option value="">{t('common.none') ?? '—'}</option>
-                  {Array.from(new Set(enriched.map(s => String(s.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)).map(cat => (
+                  {availableCategoryFilters.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -1100,73 +1279,18 @@ export function SubscriptionsView() {
                   </td>
                 </tr>
               ) : (
-                sorted.map(s => {
-                  const shownCurrency = displayMode === 'convertToBase' ? baseCurrency : s.rawCurrency
-                  const shownAmount = displayMode === 'convertToBase' ? convertCurrencySync(s.price, s.rawCurrency, baseCurrency) : s.price
-                  const categoryText = String(s.category || '').trim()
-                  return (
-                    <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
-                      <td className="px-2 py-1.5 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="min-w-0 truncate font-semibold text-slate-900 dark:text-white">{s.name}</div>
-                          {s.dueSoon ? (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
-                              {t('subscriptions.dueSoon') ?? 'Pronto'}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-0.5 whitespace-nowrap text-center text-[11px] text-slate-500 dark:text-slate-400">
-                          {periodLabelMap[s.period]}
-                        </div>
-                      </td>
-                      <td className="px-2 py-1.5 text-center font-semibold text-slate-900 dark:text-white">
-                        {formatCurrency(shownAmount, shownCurrency)}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-center text-slate-600 dark:text-slate-300">
-                        {new Date(s.startDate).toLocaleDateString(localeForLanguage(language))}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-center text-slate-600 dark:text-slate-300">
-                        {s.nextRenewal.toLocaleDateString(localeForLanguage(language))}
-                      </td>
-                      <td className="px-2 py-1.5 truncate text-center text-slate-600 dark:text-slate-300">
-                        {categoryText || (t('common.uncategorized') ?? 'Sin categoría')}
-                      </td>
-                      <td className="py-1.5">
-                        <div className="flex flex-wrap justify-center gap-2">
-                          <button
-                            type="button"
-                            aria-label={t('common.edit') ?? 'Editar'}
-                            title={t('common.edit') ?? 'Editar'}
-                            className="inline-flex items-center justify-center rounded-md bg-amber-600/80 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-500/80"
-                            onClick={() => loadForEdit(s)}
-                          >
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
-                            </svg>
-                            <span className="sr-only">{t('common.edit') ?? 'Editar'}</span>
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={t('common.delete') ?? 'Eliminar'}
-                            title={t('common.delete') ?? 'Eliminar'}
-                            className="inline-flex items-center justify-center rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-500"
-                            onClick={() => remove(s.id)}
-                          >
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <path d="M3 6h18" />
-                              <path d="M8 6V4h8v2" />
-                              <path d="M6 6l1 14h10l1-14" />
-                              <path d="M10 11v6" />
-                              <path d="M14 11v6" />
-                            </svg>
-                            <span className="sr-only">{t('common.delete') ?? 'Eliminar'}</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })
+                groupByCategory
+                  ? groupedByCategory.flatMap(([categoryLabel, list]) => (
+                    [
+                      <tr key={`group-${categoryLabel}`} className="bg-slate-50 dark:bg-slate-800/50">
+                        <td colSpan={6} className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-200">
+                          {categoryLabel} ({list.length})
+                        </td>
+                      </tr>,
+                      ...list.map(item => renderSubscriptionRow(item, categoryLabel)),
+                    ]
+                  ))
+                  : sorted.map(s => renderSubscriptionRow(s))
               )}
             </tbody>
           </table>
@@ -1199,18 +1323,61 @@ export function SubscriptionsView() {
 
                 <label className="text-sm">
                   <div className="mb-1 font-semibold">{t('subscriptions.category') ?? 'Categoría'}</div>
-                  <input
-                    list="subly-categories"
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-                    value={category}
-                    onChange={e => setCategory(e.target.value)}
-                    placeholder={t('subscriptions.categoryPlaceholder') ?? 'Ej: Streaming'}
-                  />
-                  <datalist id="subly-categories">
-                    {categories.map(c => (
-                      <option key={c} value={c} />
-                    ))}
-                  </datalist>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {categories.map(cat => (
+                        <label key={cat} className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={selectedCategories.includes(cat)}
+                            onChange={() => toggleCategorySelection(cat)}
+                          />
+                          <span>{cat}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+                        value={customCategory}
+                        onChange={e => setCustomCategory(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key !== 'Enter') return
+                          e.preventDefault()
+                          addCustomCategory()
+                        }}
+                        placeholder={t('subscriptions.categoryPlaceholder') ?? 'Ej: Streaming'}
+                      />
+                      <button
+                        type="button"
+                        className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                        onClick={addCustomCategory}
+                      >
+                        {t('subscriptions.addCategory') ?? 'Añadir'}
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {selectedCategories.length === 0 ? (
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{t('subscriptions.noCategoriesSelected') ?? 'Sin categorías seleccionadas.'}</span>
+                      ) : (
+                        selectedCategories.map(cat => (
+                          <button
+                            key={cat}
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+                            onClick={() => toggleCategorySelection(cat)}
+                            title={t('common.delete') ?? 'Eliminar'}
+                          >
+                            <span>{cat}</span>
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </label>
 
                 <label className="text-sm">
@@ -1352,6 +1519,117 @@ export function SubscriptionsView() {
                     {t('subscriptions.helpIncomplete') ?? 'Completa nombre, importe y fecha.'}
                   </div>
                 ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {detailSubscription ? (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]" onClick={() => setDetailId(null)} />
+          <div className="relative mx-auto w-full max-w-2xl px-4 py-8">
+            <div role="dialog" aria-modal="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
+              <div className="relative border-b border-slate-200 bg-gradient-to-r from-indigo-500/10 via-cyan-500/10 to-emerald-500/10 px-5 py-4 dark:border-slate-800">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  {t('subscriptions.detailTitle') ?? 'Detalle de suscripción'}
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">{detailSubscription.name}</h3>
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-100">
+                    {periodLabelMap[detailSubscription.period]}
+                  </span>
+                </div>
+                <div className="mt-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                  {formatCurrency(detailSubscription.price, detailSubscription.currency)}
+                </div>
+              </div>
+
+              <div className="space-y-4 px-5 py-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('subscriptions.startLabel') ?? 'Inicio'}
+                    </div>
+                    <div className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
+                      {new Date(detailSubscription.startDate).toLocaleDateString(localeForLanguage(language))}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t('subscriptions.nextLabel') ?? 'Próximo'}
+                    </div>
+                    <div className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
+                      {detailNextRenewal
+                        ? detailNextRenewal.toLocaleDateString(localeForLanguage(language))
+                        : (t('common.none') ?? '—')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t('subscriptions.category') ?? 'Categoría'}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {getSubscriptionCategories(detailSubscription).length ? (
+                      getSubscriptionCategories(detailSubscription).map(cat => (
+                        <span
+                          key={cat}
+                          className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700 dark:border-cyan-900 dark:bg-cyan-900/30 dark:text-cyan-200"
+                        >
+                          {cat}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
+                        {t('common.uncategorized') ?? 'Sin categoría'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  onClick={() => setDetailId(null)}
+                >
+                  {t('common.cancel') ?? 'Cerrar'}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md bg-amber-600/90 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-500/90"
+                  onClick={() => {
+                    setDetailId(null)
+                    loadForEdit(detailSubscription)
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                  </svg>
+                  {t('common.edit') ?? 'Editar'}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-500"
+                  onClick={() => {
+                    const id = detailSubscription.id
+                    setDetailId(null)
+                    remove(id)
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M6 6l1 14h10l1-14" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                  </svg>
+                  {t('common.delete') ?? 'Eliminar'}
+                </button>
               </div>
             </div>
           </div>

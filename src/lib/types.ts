@@ -25,6 +25,7 @@ export const MAJOR_CURRENCIES: CurrencyOption[] = [
 export type Subscription = {
   id: string
   name: string
+  categories?: string[]
   category?: string
   price: number
   currency: string
